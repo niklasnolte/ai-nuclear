@@ -1,53 +1,41 @@
 # %%
 import torch
-from model import Model
 from data import get_data
 import pickle
 import matplotlib.pyplot as plt
 # t-sne
-from sklearn.manifold import TSNE
 from sklearn.decomposition import PCA
-from itertools import product
 # %%
-# 897 was a good run
-sd = torch.load("models/test/best.pt")
+sd = torch.load("models/test/epoch_100000.pt")
 model = torch.load("models/test/model.pt")
-hidden_dim = sd["emb.weight"].shape[1]
 # %%
 
-_, _, _, _, vocab_size = get_data()
+_, _, _, _, vocab_size = get_data() # vocab_size = (Z, N)
 
+# hidden_dim = sd["emb.weight"].shape[1]
 # model = Model(vocab_size, hidden_dim).requires_grad_(False)
 model.load_state_dict(sd)
 
 # %%
-all_combinations = torch.tensor(list(range(vocab_size)))
+all_protons = torch.tensor(list(range(vocab_size[0])))
+all_neutrons = torch.tensor(list(range(vocab_size[1])))
 
 
 # %%
-embs = model.emb(all_combinations)
+protons = model.emb_proton(all_protons)
+neutrons = model.emb_neutron(all_neutrons)
 
-# %%
-# TSNE the embeddings
-tsne = TSNE(n_components=2, random_state=0, init='pca', n_iter=1000, perplexity=30)
-embs_tsne = tsne.fit_transform(embs.detach().cpu().numpy())
-plt.scatter(embs_tsne[:,0], embs_tsne[:,1], c=all_combinations, cmap="coolwarm")
-for i, txt in enumerate(all_combinations):
-    plt.annotate(txt.item(), (embs_tsne[i,0], embs_tsne[i,1]))
 # %%
 # PCA the embeddings
-plt.figure(figsize=(10,10))
-pca = PCA(n_components=2)
-embs_pca = pca.fit_transform(embs.detach().cpu().numpy())
-plt.scatter(embs_pca[:,0], embs_pca[:,1], c=all_combinations, cmap="coolwarm")
-#annotate
-for i, txt in enumerate(all_combinations):
-    plt.annotate(txt.item(), (embs_pca[i,0], embs_pca[i,1]))
-#plt.xlim(-0.1, 0.1)
-#plt.ylim(-0.1, 0.1)
-# %%
-
-study = pickle.load(open("study.pickle", "rb"))
-# %%
-study.best_params
+for p, ap in zip((protons, neutrons), (all_protons, all_neutrons)):
+  plt.figure(figsize=(10,10))
+  pca = PCA(n_components=2)
+  embs_pca = pca.fit_transform(p.detach().cpu().numpy())
+  plt.scatter(*embs_pca.T, c=ap, cmap="coolwarm")
+  #annotate
+  for i, txt in enumerate(ap):
+      plt.annotate(txt.item(), (embs_pca[i,0], embs_pca[i,1]))
+  plt.title("protons" if p is protons else "neutrons")
+#   plt.xlim(-0.1, 0.1)
+#   plt.ylim(-0.1, 0.1)
 # %%

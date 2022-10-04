@@ -13,6 +13,7 @@ def get_data():
 
   #selection
   df = df[df.binding != ' ']
+  df = df[df.binding != 0]
   vocab_size = len(set(df.z) | set(df.n))
   X = torch.tensor(df[["z", "n"]].values).int()
   y = torch.tensor(df.binding.astype(float).values).view(-1, 1).float()

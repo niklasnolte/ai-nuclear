@@ -6,12 +6,15 @@ from torch import nn
 from torch.utils.data import DataLoader, TensorDataset
 import tqdm
 import optuna
-from model import Model2
+
 from data import get_data
 from sklearn.decomposition import PCA
 
 
-def train(lr, wd, hidden_dim, basepath, device):
+
+
+def train(model, lr, wd, hidden_dim, basepath, device):
+
   torch.manual_seed(1)
   os.makedirs(basepath, exist_ok=True)
 
@@ -26,7 +29,6 @@ def train(lr, wd, hidden_dim, basepath, device):
 
   train_loader = DataLoader(TensorDataset(X_train, y_train), batch_size=len(X_train), shuffle=True)
 
-  model = Model2(*vocab_size, hidden_dim).to(device)
   loss_fn = nn.MSELoss()
   early_optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=wd)
   late_optimizer = torch.optim.SGD(model.parameters(), lr=lr, weight_decay=wd)
@@ -78,5 +80,5 @@ def train(lr, wd, hidden_dim, basepath, device):
 # with open("study.pickle", "wb") as f:
 #   pickle.dump(study, f)
 
-train(lr=2e-3, wd=1e-4, hidden_dim=64, basepath="models/test2/", device=torch.device("cuda:0"))
-
+if __name__ == '__main__':
+  pass

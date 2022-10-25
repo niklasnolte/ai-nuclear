@@ -3,18 +3,15 @@ import torch
 from data import get_data
 import pickle
 import matplotlib.pyplot as plt
-# t-sne
 from sklearn.decomposition import PCA
 # %%
-sd = torch.load("models/test/epoch_100000.pt")
-model = torch.load("models/test/model.pt")
+sd = torch.load("models/test2/epoch_1200.pt")
+model = torch.load("models/test2/epoch_1300.pt")
 # %%
 
 _, _, _, _, vocab_size = get_data() # vocab_size = (Z, N)
 
-# hidden_dim = sd["emb.weight"].shape[1]
-# model = Model(vocab_size, hidden_dim).requires_grad_(False)
-model.load_state_dict(sd)
+#model.load_state_dict(sd)
 
 # %%
 all_protons = torch.tensor(list(range(vocab_size[0])))
@@ -36,6 +33,4 @@ for p, ap in zip((protons, neutrons), (all_protons, all_neutrons)):
   for i, txt in enumerate(ap):
       plt.annotate(txt.item(), (embs_pca[i,0], embs_pca[i,1]))
   plt.title("protons" if p is protons else "neutrons")
-#   plt.xlim(-0.1, 0.1)
-#   plt.ylim(-0.1, 0.1)
-# %%
+

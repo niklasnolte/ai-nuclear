@@ -1,0 +1,3 @@
+,Iteration,Loss,Proton_Entropy,Neutron_Entropy,Regularization
+0,0,1.217302,48.68603,53.61325,0.20459858
+1,100,0.9570799,48.618557,53.562515,0.20436217

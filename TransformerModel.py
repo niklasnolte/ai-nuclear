@@ -9,13 +9,15 @@ import numpy as np
 import seaborn as sns
 import torchtext
 import matplotlib.pyplot as plt
-
 from train_model import train
+import random
+
+
 warnings.simplefilter("ignore")
 
 
 DROPOUT_VALUE = 0.2
-
+random.seed(42)
 #https://www.kaggle.com/code/arunmohan003/transformer-from-scratch-using-pytorch/notebook
 class Embedding(nn.Module):
     def __init__(self, n_protons, n_neutrons,  embed_dim):
@@ -46,6 +48,44 @@ class Embedding(nn.Module):
         x = x * math.sqrt(self.embed_dim)
         '''
         return out
+
+
+
+class PositionalEmbedding(nn.Module):
+    def __init__(self,max_seq_len,embed_dim):
+        """
+        Args:
+            seq_len: length of input sequence
+            embed_model_dim: demension of embedding
+        """
+        super(PositionalEmbedding, self).__init__()
+        self.embed_dim = embed_dim
+
+        pe = torch.zeros(max_seq_len,self.embed_dim)
+        for pos in range(max_seq_len):
+            for i in range(0,self.embed_dim,2):
+                pe[pos, i] = math.sin(pos / (10000 ** ((2 * i)/self.embed_dim)))
+                pe[pos, i + 1] = math.cos(pos / (10000 ** ((2 * (i + 1))/self.embed_dim)))
+        pe = pe.unsqueeze(0)
+        self.register_buffer('pe', pe)
+
+
+    def forward(self, x):
+        """
+        Args:
+            x: input vector
+        Returns:
+            x: output
+        """
+      
+        # make embeddings relatively larger
+        x = x * math.sqrt(self.embed_dim)
+        #add constant to embedding
+        seq_len = x.size(1)
+        x = x + torch.autograd.Variable(self.pe[:,:seq_len], requires_grad=False)
+        return x
+               
+
 
 class MultiHeadAttention(nn.Module):
     def __init__(self, embed_dim=512, n_heads=8):
@@ -125,6 +165,7 @@ class MultiHeadAttention(nn.Module):
        
         return output
 
+
 class TransformerBlock(nn.Module):
     def __init__(self, embed_dim, expansion_factor=4, n_heads=8):
         super(TransformerBlock, self).__init__()
@@ -183,22 +224,24 @@ class TransformerEncoder(nn.Module):
     Returns:
         out: output of the encoder
     """
-    def __init__(self, n_protons, n_neutrons, embed_dim, num_layers=2, expansion_factor=4, n_heads=8):
+    def __init__(self, n_protons, n_neutrons, embed_dim, seq_len = 2, num_layers=2, expansion_factor=4, n_heads=8):
         super(TransformerEncoder, self).__init__()
         
         self.embedding_layer = Embedding(n_protons, n_neutrons, embed_dim)
+        self.positional_encoder = PositionalEmbedding(seq_len, embed_dim)
 
         self.layers = nn.ModuleList([TransformerBlock(embed_dim, expansion_factor, n_heads) for i in range(num_layers)])
         #how many encoder alyers do we want 
 
     def forward(self, x):
-        out = self.embedding_layer(x)
+        embed_out = self.embedding_layer(x)
+        out = self.positional_encoder(embed_out)
         for layer in self.layers:
             out = layer(out,out,out)
         return out  #32x2x512
 
 class TransformerModel(nn.Module):
-    def __init__(self, n_protons, n_neutrons, embed_dim, num_layers=2, expansion_factor=4, n_heads=8):
+    def __init__(self, n_protons, n_neutrons, embed_dim, num_layers=6, expansion_factor=4, n_heads=8):
         super(TransformerModel, self).__init__()
         
         """  
@@ -231,18 +274,70 @@ class TransformerModel(nn.Module):
 
     def forward(self, x): # x: [ batch_size, 2 [n_protons, n_neutrons] ]
         encoded = self.encoder(x) # batch size x 2 x embedding_dim
-        flattened = torch.cat((encoded[:,0, :], encoded[:,1,:]), dim=1) # puts protons and neutron embeddings together
+        flattened = torch.cat((encoded[:,0, :], encoded[:,1,:]), dim=1) # batch size x (2*embedding_dim)
         x = self.nonlinear(flattened)
         return x
 
 if __name__ == '__main__':
-  train(model=TransformerModel, 
-        lr=2e-3, 
+    '''
+    embed_dim = 32
+    X_train, _, _, _, (n_protons, n_neutrons) = get_data() 
+    emb_var = Embedding(n_protons, n_neutrons, embed_dim)
+    emb = emb_var.forward(X_train)
+    pos_emb_var = PositionalEmbedding(max_seq_len=2, embed_dim = embed_dim)
+    pos_emb = pos_emb_var.forward(emb)
+    '''
+
+    
+    
+    train(modelclass=TransformerModel, 
+        lr=(2e-3)/4, 
         wd=1e-4, 
-        hidden_dim=64, 
-        basepath="models/TransformerModel/", 
-        device=torch.device("cuda")
+        embed_dim=64, 
+        basepath="models/Transformer_posemb/", 
+        device=torch.device("cuda"),
+        title = 'Transformer_posemb'
         )
 
+    train(modelclass=TransformerModel, 
+        lr=(2e-3)/4, 
+        wd=1e-4, 
+        embed_dim=64, 
+        basepath="models/Transformer_posemb_small/", 
+        device=torch.device("cuda"),
+        title = 'Transformer_posemb_small',
+        num_layers = 1, 
+        expansion_factor = 1, 
+        n_heads = 1
+        )
+    
+    '''
 
+    train(modelclass=TransformerModel, 
+        lr=(2e-3), 
+        wd=1e-4, 
+        embed_dim=512, 
+        basepath="models/TransformerBase/", 
+        device=torch.device("cuda"),
+        title = 'TransformerBase'
+        )
+    train(modelclass=TransformerModel, 
+        lr=(2e-3), 
+        wd=1e-4, 
+        embed_dim=64, 
+        basepath="models/Transformer_1layer/", 
+        device=torch.device("cuda"),
+        title = 'Transformer_1layer',
+        num_layers=1
+        )
+    train(modelclass=TransformerModel, 
+        lr=2e-3, 
+        wd=1e-4, 
+        embed_dim=64, 
+        basepath="models/TransformerModel2exp/", 
+        device=torch.device("cuda"),
+        title = 'Transformer_2exp',
+        expansion_factor = 2
+        )
+    '''
 

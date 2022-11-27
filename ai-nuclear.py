@@ -5,7 +5,7 @@ import torch
 from torch import nn
 from torch.utils.data import DataLoader, TensorDataset
 import tqdm
-import optuna
+#import optuna
 from model import Model2
 from data import get_data
 from sklearn.decomposition import PCA
@@ -31,7 +31,7 @@ def train(lr, wd, hidden_dim, basepath, device):
   early_optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=wd)
   late_optimizer = torch.optim.SGD(model.parameters(), lr=lr, weight_decay=wd)
 
-  bar = tqdm.tqdm(range(int(2e5)))
+  bar = tqdm.tqdm(range(int(2e4)))
   lowest_loss = 1e10
   for i in bar:
     optimizer = early_optimizer# if i < len(bar)//2 else late_optimizer
@@ -78,5 +78,5 @@ def train(lr, wd, hidden_dim, basepath, device):
 # with open("study.pickle", "wb") as f:
 #   pickle.dump(study, f)
 
-train(lr=2e-3, wd=1e-4, hidden_dim=64, basepath="models/test2/", device=torch.device("cuda:0"))
+train(lr=2e-3, wd=1e-4, hidden_dim=64, basepath="models/test/", device=torch.device("cuda:0" if torch.cuda.is_available() else "cpu"))
 

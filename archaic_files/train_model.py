@@ -6,39 +6,22 @@ from torch import nn
 from torch.utils.data import DataLoader, TensorDataset
 import tqdm
 import pandas as pd
-from sklearn.model_selection import train_test_split
-import urllib.request
 
-from data import get_data
+
+
+
+from base_functions import get_data
+from pca_graphs import effective_dim
 from sklearn.decomposition import PCA
 
-def effective_dim(model, all_protons, all_neutrons):
-  #calculate entropy of the embeddings
-  protons = model.emb_proton(all_protons)
-  neutrons = model.emb_neutron(all_neutrons)
 
-  protons_S = (torch.square(torch.svd(protons)[1]) / (all_protons.shape[0] - 1))
-  neutrons_S = (torch.square(torch.svd(neutrons)[1]) / (neutrons.shape[0] - 1))
-  
-  proton_prob = protons_S/protons_S.sum()
-  neutron_prob = neutrons_S/neutrons_S.sum()
-  
-  entropy_protons = -(proton_prob * torch.log(proton_prob)).sum()
-  entropy_neutrons = -(neutron_prob * torch.log(neutron_prob)).sum()
 
-  pr_e = torch.exp(entropy_protons)
-  ne_e = torch.exp(entropy_neutrons)
 
-  return pr_e, ne_e
-
-def regularize_effective_dim(model, all_protons, all_neutrons, alpha = 0.02):
-  pr_e, ne_e = effective_dim(model, all_protons, all_neutrons)
-  regularization = alpha * (pr_e+ne_e)
-  return regularization
 
 def train(modelclass, lr, wd, embed_dim, basepath, device, title, heavy_elem = 15, reg_pca = 1, reg_type = 'dimall'):
   torch.manual_seed(1)
   os.makedirs(basepath, exist_ok=True)
+
   X_train, X_test, y_train, y_test, vocab_size = get_data(heavy_elem = heavy_elem) 
 
   X_train = X_train.to(device)
@@ -56,7 +39,7 @@ def train(modelclass, lr, wd, embed_dim, basepath, device, title, heavy_elem = 1
   early_optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=wd)
   late_optimizer = torch.optim.SGD(model.parameters(), lr=lr, weight_decay=wd)
 
-  bar = tqdm.tqdm(range(int(3e2)))
+  bar = tqdm.tqdm(range(int(3e4)))
   lowest_loss = 1e10
 
   loss_list = []
@@ -74,17 +57,14 @@ def train(modelclass, lr, wd, embed_dim, basepath, device, title, heavy_elem = 1
       optimizer.zero_grad()
       y_pred = model(X_batch).to(device)
       loss = loss_fn(y_pred, y_batch)
-      if reg_pca:
-        if reg_type == 'dimall':
-          loss += reg_pca * model.alldims_loss(loss_fn, X_test, y_test)
-        elif reg_type == 'dimn':
-          loss += reg_pca * model.stochastic_pca_loss(loss_fn, X_test, y_test)
-        elif reg_type == 'oldeff':
-          loss += regularize_effective_dim(model, all_protons, all_neutrons, reg_pca)
-        else:
-          n = int(reg_type[-1])
-          loss_interim = model.evaluate_ndim(loss_fn, X_test, y_test, device=device, n = n)
-          loss+= reg_pca * loss_interim
+      if reg_type == 'dimall':
+        loss += reg_pca * model.alldims_loss(loss_fn, X_test, y_test)
+      elif reg_type == 'dimn':
+        loss += reg_pca * model.stochastic_pca_loss(loss_fn, X_test, y_test)
+      else:
+        n = int(reg_type[-1])
+        dim_pred = model.evaluate_ndim(X_test, device, n = n)
+        loss+= reg_pca * loss_fn(dim_pred, y_test)
       
       loss.backward()
       optimizer.step()
@@ -98,7 +78,7 @@ def train(modelclass, lr, wd, embed_dim, basepath, device, title, heavy_elem = 1
       if loss < lowest_loss:
         lowest_loss = loss
         best_state_dict = model.state_dict()
-      if i % 10 == 0:
+      if i % 100 == 0:
         torch.save(model.state_dict(), basepath + f"epoch{i}.pt")
 
       if i % 100 == 0:
@@ -123,32 +103,6 @@ def train(modelclass, lr, wd, embed_dim, basepath, device, title, heavy_elem = 1
   torch.save(best_state_dict, basepath + "best.pt")
   torch.save(model.cpu().requires_grad_(False), os.path.join(basepath, "model.pt"))
   return lowest_loss.item()
-
-
-def effective_dim(model, all_protons, all_neutrons):
-  #calculate entropy of the embeddings
-  protons = model.emb_proton(all_protons)
-  neutrons = model.emb_neutron(all_neutrons)
-
-  protons_S = (torch.square(torch.svd(protons)[1]) / (all_protons.shape[0] - 1))
-  neutrons_S = (torch.square(torch.svd(neutrons)[1]) / (neutrons.shape[0] - 1))
-  
-  proton_prob = protons_S/protons_S.sum()
-  neutron_prob = neutrons_S/neutrons_S.sum()
-  
-  entropy_protons = -(proton_prob * torch.log(proton_prob)).sum()
-  entropy_neutrons = -(neutron_prob * torch.log(neutron_prob)).sum()
-
-  pr_e = torch.exp(entropy_protons)
-  ne_e = torch.exp(entropy_neutrons)
-
-  return pr_e, ne_e
-
-def regularize_effective_dim(model, all_protons, all_neutrons, alpha = 0.02):
-  pr_e, ne_e = effective_dim(model, all_protons, all_neutrons)
-  regularization = alpha * (pr_e+ne_e)
-  return regularization
-
 
 
 if __name__ == '__main__':

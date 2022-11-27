@@ -9,6 +9,7 @@ import numpy as np
 import seaborn as sns
 import torchtext
 import matplotlib.pyplot as plt
+from base_functions import get_index
 from train_model import train
 import random
 

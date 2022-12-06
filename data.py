@@ -20,14 +20,16 @@ def get_data(return_ymean_ystd = False, heavy_elem = 0):
   df = lc_read_csv("fields=ground_states&nuclides=all")
   df = df[df.binding != ' ']
   df = df[df.binding != 0]
+
+  df = df[df.z>heavy_elem]
+  df.z -= df.z.min()
+  df.n -= df.n.min()
+  
   vocab_size = (df.z.nunique(), df.n.nunique())
+
   X = torch.tensor(df[["z", "n"]].values).int()
   y = torch.tensor(df.binding.astype(float).values).view(-1, 1).float()
 
-
-  heavy_mask = X[:,0]>heavy_elem
-  X = X[heavy_mask]
-  y = y[heavy_mask]
 
   y_mean = y.mean()
   y_std = y.std()
@@ -100,4 +102,4 @@ def check_diffs(heavy_elem = 15):
   plt.show()
 
 if __name__ == '__main__':
-  check_diffs()
+  X_train, X_test, y_train, y_test, vocab_size = get_data(heavy_elem = 15)

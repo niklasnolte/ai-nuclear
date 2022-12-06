@@ -1,13 +1,15 @@
 import torch
 from torch import nn
 import matplotlib.pyplot as plt
-from BasicModel import BasicModelSmaller
+from BasicModel import BasicModelSmaller, BasicModel, BasicModelSmall
 from train_model import get_data
 from base_functions import get_models, test_model, plot_epochs  
 import os
 from sklearn.decomposition import PCA
 from copy import deepcopy
 import matplotlib.colors as mcolors
+from moviepy.video.io.bindings import mplfig_to_npimage
+
 
 
 
@@ -36,22 +38,22 @@ def onedim_pca(model, all_protons, all_neutrons):
     fig.suptitle('One Dimensional Proton/Neutron Representation')
     plt.show()
 
-def twodim_pca(model, all_protons, all_neutrons, title = None):
+def twodim_pca(model, all_protons, all_neutrons, title = None, heavy_elem = 15):
     protons = model.emb_proton(all_protons)
     neutrons = model.emb_neutron(all_neutrons)
     for p, ap in zip((protons, neutrons), (all_protons, all_neutrons)):
         plt.figure(figsize=(10,10))
+
         pca = PCA(n_components=2)
         embs_pca = pca.fit_transform(p.detach().cpu().numpy())
         pca_var = pca.fit(p.detach().cpu().numpy()).explained_variance_ratio_
-        print(pca_var)
         plt.xlabel(f'{100*pca_var[0]:.2f}% of variance')
         plt.ylabel(f'{100*pca_var[1]:.4f}% of variance')
         plt.scatter(*embs_pca.T, c=ap, cmap="coolwarm")
         plt.plot(*embs_pca.T,c = 'k', linewidth = 0.2)
         #annotate
         for i, txt in enumerate(ap):
-            plt.annotate(txt.item(), (embs_pca[i,0], embs_pca[i,1]))
+            plt.annotate(heavy_elem+txt.item(), (embs_pca[i,0], embs_pca[i,1]))
         graph_title = "protons 2 component PCA analysis" if p is protons else "neutrons 2 component PCA analysis"
         if title is not None:
             graph_title = f'{title} \n{graph_title}'
@@ -88,7 +90,7 @@ def plot_embeddings_loss_epochs(title):
         model.load_state_dict(sd)
         plot_embeddings_loss(model, X_test, y_test, title = title+'\n'+file, dim = dim)
 
-def effective_dim_embedding(model, X_test, y_test, all_protons, all_neutrons, heavy_elem = 15):
+def effective_dim_embedding(model, X_test, y_test, all_protons, all_neutrons):
   #calculate entropy of the embeddings
   protons = model.emb_proton(all_protons)
   neutrons = model.emb_neutron(all_neutrons)
@@ -111,7 +113,7 @@ def effective_dim_embedding(model, X_test, y_test, all_protons, all_neutrons, he
 
   return actual_loss, loss_nd
 
-def effective_dim_final(model, X_test, y_test, heavy_elem = 15):
+def effective_dim_final(model, X_test, y_test):
   #calculate entropy of the embeddings
 
   original_statedict = model.state_dict().copy()
@@ -130,57 +132,97 @@ def effective_dim_final(model, X_test, y_test, heavy_elem = 15):
     S[index:] = 0
     nd_state = model.state_dict()
     interim = U @ torch.diag(S) @ V
-    print(interim)
     nd_state[final_layer_key] =  interim
     loss_nd[index-1] = test_model(model, X_test, y_test, nd_state)
     model.load_state_dict(original_statedict)
 
   return actual_loss, loss_nd
 
-def compare_effective_dims(titles, position = 'embedding',epoch = None):
+def compare_effective_dims(titles, parameters = None, epoch = None, plot = True):
+    if epoch is None:
+        epoch = 'best.pt'
     models = get_models(titles, epoch = epoch)
-    _, X_test, _, y_test, vocab_size = get_data()
+    heavy_elem = 15
+    if parameters is None:
+        X_train, X_test, y_train, y_test, vocab_size = get_data(heavy_elem = heavy_elem)
+    else:
+        X_train, X_test, y_train, y_test, vocab_size = parameters
     all_protons = torch.tensor(range(vocab_size[0]))
     all_neutrons = torch.tensor(range(vocab_size[1]))
     colors = list(mcolors.TABLEAU_COLORS)
+    fig, axs = plt.subplots(2, figsize = (8,12), sharex = True)
     for i in range(len(models)):
+
         model = models[i]
-        title = titles[i]
+        title = titles[i][:-1]
+        title = title[len(title) - title[::-1].index('/'):]
         color = colors[i]
-        if position == 'embedding':
-            actual_loss, loss_nd = effective_dim_embedding(model,X_test, y_test, all_protons, all_neutrons, heavy_elem = 15)
-        elif position == 'final':
-            actual_loss, loss_nd = effective_dim_final(model, X_test, y_test, heavy_elem = 15)
-        dims = range(1, len(loss_nd)+1)
-        plt.plot(dims, loss_nd, c = color)
-        plt.axhline(actual_loss, label = title, c = color, linestyle = '--')
-        print(f'{title}\nactual loss {actual_loss}, loss_5 {loss_nd[4]}\n')
+        loss_fn = nn.MSELoss()
+        actual_loss_test, loss_nd_test = effective_dim_embedding(model,X_test, y_test, all_protons, all_neutrons)
+        actual_loss_train, loss_nd_train = effective_dim_embedding(model,X_train, y_train, all_protons, all_neutrons)
+
+        actual_losses = [actual_loss_test, actual_loss_train]
+        loss_nds = [loss_nd_test, loss_nd_train]
+
+        for j in range(len(actual_losses)):
+            dims = range(1, len(loss_nd_test)+1)
+            plot_loss_nd = [loss_nd.item() for loss_nd in loss_nds[j]]
+            axs[j].plot(dims, plot_loss_nd, c = color)
+            axs[j].axhline(actual_losses[j], label = f'{title} \n Loss = {actual_losses[j]:.2e}', c = color, linestyle = '--')
+            #print(f'{title}\nactual loss {actual_losses[j]}, loss_5 {loss_nds[j][4]}\n')
 
     plt.yscale('log')
     xmin = 1
-    xmax = 45
-    plt.xlim(xmin,xmax)
+    xmax = 10
+    train_range = (2*10**-5, 1.2*10**0)
+    test_range = (2*10**-3, 1.2*10**0)
+    for j in range(2):
+        axs[j].set_xlim(xmin, xmax)
+        
+        axs[j].set_yscale('log')
+        axs[j].legend(prop={'size': 6})
+    #axs[0].set_ylim(test_range)
+    #axs[1].set_ylim(train_range)
+    
     plt.xticks(ticks = list(range(xmin, xmax)))
-    plt.legend()
-    plt.title('Loss at given Dimension')
-    plt.xlabel('Dimension of Embedding')
-    plt.ylabel('Loss')
-    plt.show()
+    plt.subplots_adjust(hspace=0, wspace = 0)
+    fulltitle = titles[0]
+    base = fulltitle[fulltitle.index('/')+1:len(fulltitle)-len(title)+title.index('_')+1]
+    modeltype = title[len(title) - title[::-1].index('_'):]
+    fig.suptitle(f'{base}\n{modeltype}\nLoss at given Embedding Dimension\n{epoch}')
+    axs[1].set_xlabel('Dimension of Embedding Used')
+    axs[0].set_ylabel('Test Loss')
+    axs[1].set_ylabel('Train Loss')
+    if plot:
+        plt.show()
+    return mplfig_to_npimage(fig)
 
 if __name__ == '__main__':
-    regs = [0, 2e-4, 2e-3, 2e-2, 2e-1, 2e0]#[2, 1, 2e-1]
-    regs = [2e-1]
-    vals = ['dimall', 'dimn', 'oldeff', 'dim3', 'dim6']
-    vals = [vals[3]]
+    regs = [0, 2e-4, 2e-3, 2e-2, 2e-1, 2e0, 5e0]#[2, 1, 2e-1]
+
+    #regs = [0, 0.1, 0.5, 1, 5]
+    vals = ['dimn', 'dimall', 'oldeff', 'dim3', 'dim6']
+    vals = vals[:1]
+    seeds = [1,25,30,31,50]
     titles = []
-    for j in range(len(vals)):
-        for i in range(len(regs)):
-            val = vals[j]
-            reg = regs[i]
-            print(val, reg)
-            title = f'BasicModelSmaller_regpca{reg}_{val}'
-            path = f"models/pcareg_heavy15/{title}/"
-            titles.append(path)
-    #model = BasicModelSmaller(100, 100, 64)
-    #keys = ['emb_proton.weight', 'emb_neutron.weight', 'nonlinear.1.weight', 'nonlinear.1.bias', 'nonlinear.3.weight', 'nonlinear.3.bias']
-    compare_effective_dims(titles, position = 'embedding', epoch = 'best.pt')
+    for val in vals:
+        for reg in regs:
+                print(val, reg)
+                title = f'BasicModel_regpca{reg}_{val}'
+                path = f"models/pcareg_heavy15/{title}/"
+                titles.append(path)
+    print(titles)
+    compare_effective_dims(titles, epoch = 'best.pt')
+    '''
+    titles = ['models/pcareg_heavy15/BasicModelSmall_regpca2.0_dimn/', 
+            'models/pcareg_heavy15/BasicModelSmall_regpca0_dimn/' ]
+    models = get_models(titles)
+    heavy_elem = 15
+    _, X_test, _, y_test, vocab_size = get_data(heavy_elem = heavy_elem)
+    all_protons = torch.tensor(list(range(vocab_size[0])))
+    all_neutrons = torch.tensor(list(range(vocab_size[1])))
+    for i, model in enumerate(models):
+        twodim_pca(model, all_protons, all_neutrons, title = titles[i])
+    '''
+
+

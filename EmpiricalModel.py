@@ -52,7 +52,7 @@ class Empirical(nn.Module):
     return (E_raw - self.ymean)/self.ystd
 
 
-def test_empirical(heavy_elem = 0):
+def test_empirical(heavy_elem = 15):
   _, X_test, _, y_test, _ = get_data(heavy_elem=heavy_elem)
 
 
@@ -67,23 +67,27 @@ def test_empirical(heavy_elem = 0):
   return loss(y_pred, y_test.view(-1))
 
 
-
-
-if __name__ == '__main__':
-  print(test_empirical(15))
-  '''
+def train_empirical():
   X_train, X_test, y_train, y_test, vocab_size, ymean, ystd = get_data(return_ymean_ystd = True, heavy_elem=15)
-
-
+  print(X_train.shape)
+  print(X_test.shape)
+  print(y_train.shape)
+  print(y_test.shape)
   model = Empirical(ymean,ystd)
 
   with torch.no_grad():
-    y_pred = model(X_test)
+    y_pred_test = model(X_test)
+    print(y_pred_test.shape)
     y_pred_train = model(X_train)
-    loss  =nn.MSELoss()
+    print(y_pred_train.shape)
 
-    print(loss(y_pred, y_test.view(-1)))
-    print(loss(y_pred_train, y_train.view(-1)))
+    print(y_pred_train)
+
+
+    loss_fn  =nn.MSELoss()
+
+    print(loss_fn(y_pred_test, y_test.view(-1, 1)))
+    print(loss_fn(y_pred_train, y_train.view(-1, 1)))
   
   epochs = 3e4
   
@@ -94,18 +98,20 @@ if __name__ == '__main__':
   optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=wd)
   for b in bar:
     optimizer.zero_grad()
-    y_pred = model(X_train)
-    train_loss = loss(y_pred, y_train.view(-1))
+    y_pred_train = model(X_train)
+    train_loss = loss_fn(y_pred_train, y_train.view(-1))
     train_loss.backward()
     optimizer.step()
     with torch.no_grad():
-      y_pred = model(X_test)
-      test_loss = loss(y_pred, y_test.view(-1))
+      y_pred_test = model(X_test)
+      test_loss = loss_fn(y_pred_test, y_test.view(-1))
       bar.set_postfix(test_loss=test_loss.item(), train_loss=train_loss.item())
   torch.save(model.state_dict(), 'empirical_sd.pt')
   torch.save(model.cpu().requires_grad_(False), 'empirical_model.pt')
   
-  sd = torch.load(f"empirical.pt")
-  print(sd)
-  '''
+
+
+if __name__ == '__main__':
+  print(train_empirical())
+  
   

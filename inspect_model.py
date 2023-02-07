@@ -6,11 +6,20 @@ import matplotlib.pyplot as plt
 # t-sne
 from sklearn.decomposition import PCA
 # %%
-sd = torch.load("models/test3/epoch_100000.pt")
-model = torch.load("models/test3/model.pt")
+opt = 'data'
+
+if opt=='empirical':
+    basepath_sd = "models/empirical/epoch_19900.pt"
+    basepath_model = "models/empirical/model.pt"
+elif opt=='data':
+    basepath_sd = "models/data/epoch_19900.pt"
+    basepath_model = "models/data/model.pt"
+
+sd = torch.load(basepath_sd)['model_state_dict']
+model = torch.load(basepath_model)
 # %%
 
-_, _, _, _, vocab_size = get_data('true') # vocab_size = (Z, N)
+_, _, _, _, _, _, vocab_size = get_data(opt,0) # vocab_size = (Z, N)
 
 # hidden_dim = sd["emb.weight"].shape[1]
 # model = Model(vocab_size, hidden_dim).requires_grad_(False)

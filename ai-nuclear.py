@@ -8,17 +8,18 @@ from torch.utils.data import DataLoader, TensorDataset
 import tqdm
 import optuna
 from model import Model2, Model3
-from data import get_data
+from data import get_data, yorig, rms
 from sklearn.decomposition import PCA
 import time
 
-opt = 'empirical'
+opt = 'data'
+
 
 def train(modeltype, lr, wd, alpha, hidden_dim, n_epochs, basepath, device):
   torch.manual_seed(1)
   os.makedirs(basepath, exist_ok=True)
 
-  X_train, X_test, y_train, y_test, vocab_size, y_mean, y_std = get_data(opt,0) 
+  X_train, X_test, y_train, y_test, y_mean, y_std, vocab_size = get_data(opt,0) 
   X_train = X_train.to(device)
   X_test = X_test.to(device)
   y_train = y_train.to(device)
@@ -54,11 +55,13 @@ def train(modeltype, lr, wd, alpha, hidden_dim, n_epochs, basepath, device):
       y_pred = model(X_test)
       loss = loss_fn(y_pred, y_test)
       train_loss = loss_fn(model(X_train), y_train)
-      rms = np.sqrt(((((y_test*y_std+y_mean)-(y_pred*y_std+y_mean)))**2).sum()/y_test.size()[0])
-      #rms = np.sqrt(((X_test.sum(1, keepdim=True)*((y_test*y_std+y_mean)-(y_pred*y_std+y_mean)))**2).sum()/y_test.size()[0])
+      rms_p = rms(yorig(y_test,y_mean, y_std), yorig(y_pred,y_mean, y_std))
       if loss < lowest_loss:
-        lowest_loss = loss
-        best_state_dict = model.state_dict()
+          lowest_loss = loss
+          best_state_dict = model.state_dict()
+      # if rms_p < 0.06  :
+      #     print(lr, wd)
+      #     break
       if i % 100 == 0:
         torch.save({'epoch': i,
             'model_state_dict': model.state_dict(),
@@ -74,7 +77,7 @@ def train(modeltype, lr, wd, alpha, hidden_dim, n_epochs, basepath, device):
         pr_e = np.exp(entropy_protons)
         ne_e = np.exp(entropy_neutrons)
 
-      bar.set_postfix(loss=loss.item(), train_loss=train_loss.item(), pr_e=pr_e, ne_e=ne_e, rms=rms.item())
+      bar.set_postfix(loss=loss.item(), train_loss=train_loss.item(), pr_e=pr_e, ne_e=ne_e, rms_p=rms_p.item())
       
   torch.save(best_state_dict, basepath + "best.pt")
   torch.save(model.cpu().requires_grad_(False), os.path.join(basepath, "model.pt"))
@@ -102,7 +105,23 @@ start = time.time()
 #     train(lr=2e-3, wd=1e-4, hidden_dim=64, basepath="models/test1/", device=torch.device("cuda:0"))
 # =============================================================================
 
-train(Model2, lr=2e-3, wd=1e-4, alpha=1, hidden_dim=64, n_epochs=2e4, basepath="models/test1/", device=torch.device("cpu"))
+if opt=='empirical':
+    basepath="models/empirical/"
+elif opt=='data':
+    basepath="models/data/"
+
+def drange(start, stop, step):
+    r = start
+    while r < stop:
+        yield r
+        r += step 
+    
+# for lr in drange(2.79e-3, 2.83e-3, 0.005e-3):
+#     for wd in drange(6.69e-4, 6.71e-4, 0.005e-4):
+#         print (lr,wd)
+#         train(Model2, lr=lr, wd=wd, alpha=1, hidden_dim=64, n_epochs=2e3, basepath="models/test1", device=torch.device("cpu"))
+
+train(Model2, lr=0.0028 , wd=0.00067, alpha=1, hidden_dim=64, n_epochs=1e3, basepath=basepath, device=torch.device("cpu"))
 
 stop = time.time()
 print(f"Training time: {stop - start}s")

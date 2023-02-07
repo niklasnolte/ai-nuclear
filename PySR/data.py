@@ -1,3 +1,4 @@
+import os
 import numpy as np
 import pandas as pd
 import urllib.request
@@ -32,7 +33,10 @@ def PySR_formula(data):
   N = data[["n"]].values
   Z = data[["z"]].values
   x0 = Z
-  Eb = ((np.exp(-3.2294352 / np.ex(x0 / 4.6362405)) / 0.28763804) + 4.6362405)
+  x1 = N
+  sin = np.sin
+  square = np.square
+  Eb = (((sin((x0 * 0.013914747) + 1.3984956) + 3.4771945) / 0.50004995) + (-17.490149 / (x0 + 1.3984956)))
   return Eb
 
 def get_data(opt,heavy_elem):
@@ -67,10 +71,54 @@ def yorig(y,y_mean,y_std):
     return y*y_std+y_mean
 
 def rms(y_test, y_pred):
- return np.sqrt(((y_test-y_pred)**2).sum()/y_test.size()[0])
+    return np.sqrt(((y_test-y_pred)**2).sum()/y_test.size()[0])
 
-# X_train, X_test, y_train, y_test, vocab_size, y_mean, y_std = get_data('empirical',0)
-# X = torch.cat((X_train,X_test), 0).cpu().detach().numpy()
-# X = np.column_stack((X, X[:,1]+X[:,0]))
-# X = np.column_stack((X, X[:,1]-X[:,0]))
-# y = y_std*torch.cat((y_train,y_test), 0).cpu().detach().numpy()+y_mean
+def EbtoM(X,y):
+    mp = 938.272
+    mn = 939.565
+    Z = X[:,0]
+    N = X[:,1]
+    M = (Z+N)*y-Z*mp-N*mn
+
+def rms_mass(X,y_test, y_pred):
+    return np.sqrt(((EbtoM(X,y_test)-EbtoM(X,y_pred))**2).sum()/y_test.size()[0])
+
+
+opt='data'
+
+os.chdir("..")
+if opt=='empirical':
+    model_pred = torch.load("models/empirical/model.pt")
+elif opt=='data':
+    model_pred = torch.load("models/data/model.pt")
+os.chdir("PySR")
+
+#import data & Eb from the empirical formula (normalized)  
+X_train, X_test, y_train, y_test, y_mean, y_std, vocab_size = get_data(opt,0)
+_, _, y_train_emp, y_test_emp, y_mean_emp, y_std_emp, _ = get_data('empirical',0)
+_, _, y_train_PySR, y_test_PySR, y_mean_PySR, y_std_PySR, _ = get_data('PySR',0)
+
+#transform back to Eb (MeV)
+y_test0 = yorig(y_test,y_mean,y_std)
+y_train0 = yorig(y_train,y_mean,y_std)
+y_test_emp0 = yorig(y_test_emp,y_mean_emp,y_std_emp)
+y_train_emp0 = yorig(y_train_emp,y_mean_emp,y_std_emp)
+y_test_PySR0 = yorig(y_test_PySR,y_mean_PySR,y_std_PySR)
+y_train_PySR0 = yorig(y_train_PySR,y_mean_PySR,y_std_PySR)
+
+#unite train and test 
+X = torch.cat((X_train,X_test), 0)
+y_dat0 = torch.cat((y_train0,y_test0), 0)
+y_emp0 = torch.cat((y_train_emp0,y_test_emp0), 0)
+y_PySR0 = torch.cat((y_train_PySR0,y_test_PySR0), 0)
+
+#model predictions
+y_pred = model_pred(X)
+y_pred0 = yorig(y_pred,y_mean,y_std)
+
+#y =(y_pred0-y_emp0)
+y = y_emp0
+
+#make np.array out of tensors
+X = X.cpu().detach().numpy()
+y =y.cpu().detach().numpy()

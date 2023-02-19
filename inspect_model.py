@@ -8,6 +8,7 @@ from sklearn.decomposition import PCA
 # %%
 opt = 'data'
 
+
 if opt=='empirical':
     basepath_sd = "models/empirical/epoch_19900.pt"
     basepath_model = "models/empirical/model.pt"
@@ -38,8 +39,9 @@ neutrons = model.emb_neutron(all_neutrons)
 # PCA the embeddings
 for p, ap in zip((protons, neutrons), (all_protons, all_neutrons)):
   plt.figure(figsize=(10,10))
-  pca = PCA(n_components=2)
+  pca = PCA(n_components=4)
   embs_pca = pca.fit_transform(p.detach().cpu().numpy())
+
   plt.scatter(*embs_pca.T, c=ap, cmap="coolwarm")
   #annotate
   for i, txt in enumerate(ap):

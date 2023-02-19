@@ -3,11 +3,19 @@ import pandas as pd
 import urllib.request
 import torch
 from sklearn.model_selection import train_test_split
+from matplotlib import pyplot as plt
 
-def delta(N,Z):
-    A = N+Z
+def radius_formula(Z,N):
+    # N = data[["n"]].values
+    # Z = data[["z"]].values
+    A = Z+N
+    r0 = 1.2
+    return r0*A**(1/3) #fm
+
+def delta(Z,N):
+    A = Z+N
     aP = 12
-    delta0 = aP*A**(1/2)
+    delta0 = aP/A**(1/2)
     for i in range(len(A)):        
         if ((N%2==0) & (Z%2==0))[i,0]:
             pass
@@ -25,17 +33,18 @@ def binding_formula(data):
   aS = 18.3
   aC = 0.714
   aA = 23.2
-  Eb = aV*A - aS*A**(2/3) - aC*Z*(Z-1)/(A**(1/3)) - (N-Z)**2/A + delta(N,Z)
-  return Eb/A
+  Eb = aV*A - aS*A**(2/3) - aC*Z*(Z-1)/(A**(1/3)) - aA*(N-Z)**2/A + delta(Z,N)
+  return Eb/A #MeV
 
 def PySR_formula(data):
   N = data[["n"]].values
   Z = data[["z"]].values
   x0 = Z
-  Eb = ((np.exp(-3.2294352 / np.ex(x0 / 4.6362405)) / 0.28763804) + 4.6362405)
+  x1 = N
+  Eb = (((-10.931704 / ((0.742612 / x0) + x1)) + 7.764321) + np.sin(x0 * 0.03747635))
   return Eb
 
-def get_data(opt,heavy_elem):
+def get_data(opt,obs,heavy_elem):
   np.random.seed(1)
   def lc_read_csv(url):
       req = urllib.request.Request("https://nds.iaea.org/relnsd/v1/data?" + url)
@@ -43,34 +52,102 @@ def get_data(opt,heavy_elem):
       return pd.read_csv(urllib.request.urlopen(req))
 
   df = lc_read_csv("fields=ground_states&nuclides=all")
-  #selection
-  df = df[df.binding != ' ']
-  df = df[df.binding != 0]
+  # df = df[df.binding != ' ']
+  # df = df[df.binding != 0]  
+  
   vocab_size = (df.z.nunique(), df.n.nunique())
   X = torch.tensor(df[["z", "n"]].values).int()
   if opt == 'empirical':
-      y = torch.tensor(binding_formula(df)).view(-1, 1).float() #MeV
+      y0 = torch.tensor(binding_formula(df)).view(-1, 1).float() #MeV
   elif opt == 'PySR':
-      y = torch.tensor(PySR_formula(df)).view(-1, 1).float() #MeV
+      y0 = torch.tensor(PySR_formula(df)).view(-1, 1).float() #MeV
   else:
-      y = torch.tensor(df.binding.astype(float).values/1000).view(-1, 1).float()#*X.sum(1, keepdim=True) #keV to MeV
+      y0 = 0
+      for obsi in obs:
+          #turn missing measurements to zero
+          dfobs = getattr(df,obsi)
+          df[obsi] = dfobs.apply(lambda x: 0 if x == ' ' else x)
+          y0i = torch.tensor(df[obsi].astype(float).values).view(-1, 1).float()
+          if obsi == 'binding': 
+              y0i = y0i/1000 #keV to MeV
+          if isinstance(y0, torch.Tensor):
+              y0 = torch.cat((y0, y0i), dim=1)  
+          else:
+              y0 = y0i 
       
   heavy_mask = X[:,0]>heavy_elem
   X = X[heavy_mask]
-  y = y[heavy_mask]
-  yp = (y - y.mean()) / y.std()
+  y0 = y0[heavy_mask]
+  y0_mean = y0.mean(dim=0)
+  y0_std = y0.std(dim=0)
+    
+  y = (y0 - y0_mean)/y0_std.unsqueeze(0).expand_as(y0)
 
-  X_train, X_test, y_train, y_test = train_test_split(X, yp, test_size=0.2)
-  return X_train , X_test, y_train, y_test, y.mean(), y.std(), vocab_size
+  X_train, X_test, y_train, y_test, y0_train, y0_test = train_test_split(X, y, y0, test_size=0.2)
+  return [X_train , X_test], [y_train, y_test], [y0_train, y0_test], [y0_mean, y0_std], vocab_size
 
-def yorig(y,y_mean,y_std):
-    return y*y_std+y_mean
+def yorig(y,y0_mean,y0_std):
+    return y*y0_std+y0_mean
 
-def rms(y_test, y_pred):
- return np.sqrt(((y_test-y_pred)**2).sum()/y_test.size()[0])
+def clear_x(X, y0_dat, obs_i): #removes the Z,N for which there is no measurement
+    try:
+        X = X[y0_dat[:,obs_i] != 0].view(-1, 2)
+    except:
+        X = X[y0_dat[:,0] != 0].view(-1, 2)
+    return X
 
-# X_train, X_test, y_train, y_test, vocab_size, y_mean, y_std = get_data('empirical',0)
-# X = torch.cat((X_train,X_test), 0).cpu().detach().numpy()
-# X = np.column_stack((X, X[:,1]+X[:,0]))
-# X = np.column_stack((X, X[:,1]-X[:,0]))
-# y = y_std*torch.cat((y_train,y_test), 0).cpu().detach().numpy()+y_mean
+def clear_y(y_dat, y0_dat, y_pred, obs_i): #removes the dat for which there is no measurement
+    try:
+        y_pred = y_pred[y0_dat[:,obs_i] != 0][:,obs_i].view(-1, 1)
+        y_dat = y_dat[y0_dat[:,obs_i] != 0][:,obs_i].view(-1, 1)
+    except:
+        y_pred = y_pred[y0_dat != 0].view(-1, 1)
+        y_dat = y_dat[y0_dat != 0].view(-1, 1)
+    return y_dat, y_pred
+
+def rms(y_dat, y_pred, obs_i): #MeV
+        y_dat, y_pred = clear_y(y_dat, y_dat, y_pred, obs_i)
+        return np.sqrt(((y_dat-y_pred)**2).sum()/y_dat.size()[0]) 
+
+#TEST:
+    
+opt = 'data'
+
+#obs = ['radius']
+obs = ['binding','radius']
+
+if opt=='empirical':
+    basepath="models/empirical/"
+elif opt=='data':
+    basepath="models/"+'+'.join(obs)
+elif opt=='PySR':
+    basepath="models/PySR/"
+    
+model = torch.load(basepath+"/model.pt")
+
+
+(X_train, X_test), (y_train, y_test), (y0_train, y0_test), (y0_mean, y0_std), vocab_size = get_data('data',obs,0)
+_, (y_train_emp, y_test_emp), (y0_train_emp, y0_test_emp), _, _ = get_data('empirical',0,0)
+_, (y_train_PySR, y_test_PySR), (y0_train_PySR, y0_test_PySR), _, _ = get_data('PySR',0,0)
+
+#unite train and test 
+X = torch.cat((X_train,X_test), 0)
+y_dat = torch.cat((y_train,y_test), 0)
+y_emp = torch.cat((y_train_emp,y_test_emp), 0)
+y_PySR = torch.cat((y_train_PySR,y_test_PySR), 0)
+y0_dat = torch.cat((y0_train,y0_test), 0)
+y0_emp = torch.cat((y0_train_emp,y0_test_emp), 0)
+y0_PySR = torch.cat((y0_train_PySR,y0_test_PySR), 0)
+
+#model predictions
+y_pred = model(X)
+y0_pred = yorig(y_pred,y0_mean,y0_std)
+
+X_bind = clear_x(X, y0_dat, 0)
+X_rad = clear_x(X, y0_dat, 1)
+bind_dat, bind_pred = clear_y(y0_dat, y0_dat, y0_pred, 0)
+rad_dat, rad_pred = clear_y(y0_dat, y0_dat, y0_pred, 1)
+plt.scatter(X_rad[:,0],rad_dat)
+# plt.scatter(X_rad[:,1],rad_dat)
+plt.scatter(X_rad[:,0],rad_pred,alpha=0.5) 
+plt.show()

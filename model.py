@@ -21,7 +21,7 @@ class Model(nn.Module):
     return x
 
 class Model2(nn.Module):
-  def __init__(self, n_protons, n_neutrons, hidden_dim):
+  def __init__(self, n_protons, n_neutrons, hidden_dim, n_obs):
     super().__init__()
     self.emb_proton = nn.Embedding(n_protons, hidden_dim) # [ batch_size, hidden_dim ]
     self.emb_neutron = nn.Embedding(n_neutrons, hidden_dim) # [ batch_size, hidden_dim ]
@@ -33,7 +33,7 @@ class Model2(nn.Module):
       nn.Linear(hidden_dim, hidden_dim),
       nn.ReLU(),
       #nn.Dropout(0.001),
-      nn.Linear(hidden_dim, 1))
+      nn.Linear(hidden_dim, n_obs))
     #bigger init
     self.emb_proton.weight.data.uniform_(-1,1)
     self.emb_neutron.weight.data.uniform_(-1,1)
@@ -50,7 +50,6 @@ class Model2(nn.Module):
     
     x = self.nonlinear(torch.hstack((proton, neutron)))
     return x
-
 
 class Model3(nn.Module):
   def __init__(self, n_protons, n_neutrons, hidden_dim):

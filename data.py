@@ -10,7 +10,10 @@ import urllib.request
 from sklearn.model_selection import train_test_split
 from copy import deepcopy
 
-def get_data(return_ymean_ystd = False, heavy_elem = 0):
+def get_data(return_ymean_ystd = False, heavy_elem = 15):
+  #gets proton/neutron/energy data. WE NORMALIZE ENERGIES
+  #return_ymean_ystd tells whether to return the std/mean of the energy prenormalization
+  #discard all elements below heavy_elem
   np.random.seed(1)
   def lc_read_csv(url):
     req = urllib.request.Request("https://nds.iaea.org/relnsd/v0/data?" + url)
@@ -50,6 +53,9 @@ def get_data(return_ymean_ystd = False, heavy_elem = 0):
     return X_train , X_test, y_train, y_test, vocab_size
 
 def analyze_differences(heavy_elem = 15):
+  #compares methods of trimming heavy elems
+  #used when i didnt understand why the trim was giving inconsistent results
+  #archaic now
   fig, axs = plt.subplots(2, 2)
   for i in range(len(axs)):
     print(i)
@@ -75,6 +81,8 @@ def analyze_differences(heavy_elem = 15):
   plt.show()
 
 def check_diffs(heavy_elem = 15):
+  #sees difference between training mask types
+  #archaic now that issue has been resolved
   traintypes = ['train1', 'train2', 'train3']
   fig, axs = plt.subplots(3, 1)
   for i in range(len(traintypes)):

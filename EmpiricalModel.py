@@ -7,6 +7,7 @@ import matplotlib.pyplot as plt
 import torch.nn as nn
 import tqdm
 from data import get_data
+from torch.utils.data import DataLoader, TensorDataset
 
 def empirical_function(p_n, ymean, ystd):
   N = p_n[1]
@@ -63,43 +64,34 @@ def test_empirical(heavy_elem = 15):
   
   y_pred = model(X_test)
   loss  = nn.MSELoss()
-
-  return loss(y_pred, y_test.view(-1))
+  test_loss = loss(y_pred, y_test.view(-1))
+  return test_loss
 
 
 def train_empirical():
   X_train, X_test, y_train, y_test, vocab_size, ymean, ystd = get_data(return_ymean_ystd = True, heavy_elem=15)
-  print(X_train.shape)
-  print(X_test.shape)
-  print(y_train.shape)
-  print(y_test.shape)
   model = Empirical(ymean,ystd)
 
   with torch.no_grad():
     y_pred_test = model(X_test)
-    print(y_pred_test.shape)
     y_pred_train = model(X_train)
-    print(y_pred_train.shape)
-
-    print(y_pred_train)
+    
 
 
-    loss_fn  =nn.MSELoss()
-
-    print(loss_fn(y_pred_test, y_test.view(-1, 1)))
-    print(loss_fn(y_pred_train, y_train.view(-1, 1)))
-  
   epochs = 3e4
   
   wd = 1e-4
   lr = 1e-3
   
-  bar = tqdm.tqdm(range(int(epochs)))
+  bar = tqdm.tqdm(range(int(3)))
   optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=wd)
   for b in bar:
     optimizer.zero_grad()
+    loss_fn  =nn.MSELoss()
     y_pred_train = model(X_train)
+
     train_loss = loss_fn(y_pred_train, y_train.view(-1))
+    print(train_loss)
     train_loss.backward()
     optimizer.step()
     with torch.no_grad():
@@ -108,10 +100,33 @@ def train_empirical():
       bar.set_postfix(test_loss=test_loss.item(), train_loss=train_loss.item())
   torch.save(model.state_dict(), 'empirical_sd.pt')
   torch.save(model.cpu().requires_grad_(False), 'empirical_model.pt')
+
+
+
+def train_empirical():
+  X_train, X_test, y_train, y_test, vocab_size, ymean, ystd = get_data(return_ymean_ystd = True, heavy_elem=15)
+  model = Empirical(ymean,ystd)
+  bar = tqdm.tqdm(range(int(3e4)))
+  torch.autograd.set_detect_anomaly(True)
+  wd = 1e-4
+  lr = 1e-3
+  train_loader = DataLoader(TensorDataset(X_train, y_train), batch_size=len(X_train), shuffle=True)
+  device = torch.device("cuda")
+  loss_fn = nn.MSELoss()
+  for i in bar:
+
+    optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=wd)# if i < len(bar)//2 else late_optimizer
+    for X_batch, y_batch in train_loader:
+
+      optimizer.zero_grad()
+      y_pred = model(X_batch)
+      loss = loss_fn(y_pred, y_batch)
+      loss.backward()
+      optimizer.step()
   
 
 
 if __name__ == '__main__':
-  print(train_empirical())
+  train_empirical()
   
   

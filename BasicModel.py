@@ -254,6 +254,28 @@ class BasicModelSmaller(nn.Module):
     return loss
 
 
+class BasicModelSmallerDropout(nn.Module):
+  def __init__(self, n_protons, n_neutrons, hidden_dim):
+    super().__init__()
+    self.emb_proton = nn.Embedding(n_protons, hidden_dim) # [ batch_size, hidden_dim ]
+    self.emb_neutron = nn.Embedding(n_neutrons, hidden_dim) # [ batch_size, hidden_dim ]
+    self.nonlinear = nn.Sequential(
+      nn.Flatten(),
+      nn.Linear(2*hidden_dim, 16), # we need 2*hidden_dim to get proton and neutron embedding
+      nn.ReLU(),
+      nn.Dropout(p=0.001),
+      nn.Linear(16, 1))
+    self.emb_proton.weight.data.uniform_(-1,1)
+    self.emb_neutron.weight.data.uniform_(-1,1)
+
+  def forward(self, x): # x: [ batch_size, 2 [n_protons, n_neutrons] ]
+    proton = self.emb_proton(x[:,0]) # [ batch_size, hidden_dim ]
+    neutron = self.emb_neutron(x[:,1]) # [ batch_size, hidden_dim ]
+    
+    x = self.nonlinear(torch.hstack((proton, neutron)))
+    return x
+
+
 class BasicModelReallySmall(nn.Module):
   def __init__(self, n_protons, n_neutrons, hidden_dim):
     super().__init__()
@@ -315,7 +337,31 @@ class BasicLinear(nn.Module):
 
 
 if __name__ == '__main__':
-
+  dir = 'pcareg_heavy15'
+  for regpca in [2e-4, 2e-3, 2e-2, 2e-1, 2e0, 5e0]:
+    title = f'BasicModelSmall_regpca{regpca}_embed256_dimn'
+    train(modelclass=BasicModelSmall, 
+                    lr=(2e-3)/4, 
+                    wd=1e-4, 
+                    embed_dim=256, 
+                    basepath=f"models/{dir}/{title}/", 
+                    device=torch.device("cuda"),
+                    title = title,
+                    reg_pca = regpca, 
+                    reg_type = 'dimn'
+                    )
+  title = 'BasicModelSmallerDropout_regpca0_dimn'
+  train(modelclass=BasicModelSmall, 
+                    lr=(2e-3)/4, 
+                    wd=1e-4, 
+                    embed_dim=64, 
+                    basepath=f"models/{dir}/{title}/", 
+                    device=torch.device("cuda"),
+                    title = title,
+                    reg_pca = 0, 
+                    reg_type = 'dimn'
+                    )            
+  '''
   
   regtypes = ['dimn', 'dimall', 'oldeff', 'dim3'][:1]
 
@@ -366,5 +412,6 @@ if __name__ == '__main__':
                     reg_type = regtype,
                     norm = norm
                     )
+  '''
 
     

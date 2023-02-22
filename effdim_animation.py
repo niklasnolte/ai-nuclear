@@ -19,6 +19,7 @@ import matplotlib.colors as mcolors
 
 
 def compare_effective_dims_here(graph_title, titles, models, X_test, y_test, vocab_size):
+    #compares effective dim of models and creates image
     fig = plt.figure(figsize = (8,6))
     all_protons = torch.tensor(range(vocab_size[0]))
     all_neutrons = torch.tensor(range(vocab_size[1]))
@@ -44,6 +45,7 @@ def compare_effective_dims_here(graph_title, titles, models, X_test, y_test, voc
     return mplfig_to_npimage(fig)
 
 def make_frame(fps, model_titles,parameters):
+    #creates a frame of model animation
     def make_real_frame(t):
         factor = 10 * fps
         models = []
@@ -64,6 +66,7 @@ def make_frame(fps, model_titles,parameters):
     return make_real_frame
 
 def create_video(video_title, model_titles):
+    #stitches together pictures to make video animation
     print(val)
     total_frames = 1960
     fps = 50

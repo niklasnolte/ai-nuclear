@@ -15,6 +15,7 @@ from moviepy.video.io.bindings import mplfig_to_npimage
 
 
 def onedim_pca(model, all_protons, all_neutrons):
+    #plots one dimensional pca. Not useful
     p_n_embed= [model.emb_proton(all_protons), model.emb_neutron(all_neutrons)]
     p_n = [all_protons, all_neutrons]
 
@@ -38,9 +39,14 @@ def onedim_pca(model, all_protons, all_neutrons):
     fig.suptitle('One Dimensional Proton/Neutron Representation')
     plt.show()
 
-def twodim_pca(model, all_protons, all_neutrons, title = None, heavy_elem = 15):
+def twodim_pca(model, title = None, heavy_elem = 15):
+    #takes in model (not title) and plots the twodim pca graph
+    _, X_test, _, y_test, (psize, nsize) = get_data(heavy_elem=heavy_elem)
+    all_protons = torch.tensor(list(range(psize)))
+    all_neutrons = torch.tensor(list(range(nsize)))
     protons = model.emb_proton(all_protons)
     neutrons = model.emb_neutron(all_neutrons)
+    loss = test_model(model, X_test, y_test)
     for p, ap in zip((protons, neutrons), (all_protons, all_neutrons)):
         plt.figure(figsize=(10,10))
 
@@ -56,7 +62,7 @@ def twodim_pca(model, all_protons, all_neutrons, title = None, heavy_elem = 15):
             plt.annotate(heavy_elem+txt.item(), (embs_pca[i,0], embs_pca[i,1]))
         graph_title = "protons 2 component PCA analysis" if p is protons else "neutrons 2 component PCA analysis"
         if title is not None:
-            graph_title = f'{title} \n{graph_title}'
+            graph_title = f'{title}\n{graph_title}\ntest loss = {loss:.4f}'
         plt.title(graph_title)
     plt.show()
 
@@ -64,6 +70,7 @@ def twodim_pca(model, all_protons, all_neutrons, title = None, heavy_elem = 15):
 
 def plot_embeddings_loss(model, X_test, y_test, title, dim = 64):
     # plots the loss for 1 to n dimensions used in the embeddings of a single model
+    # expects model, not title
     ndims = list(range(1,dim+1,1))
     loss_fn = nn.MSELoss()
     y_pred = model(X_test)
@@ -79,6 +86,7 @@ def plot_embeddings_loss(model, X_test, y_test, title, dim = 64):
 
 def plot_embeddings_loss_epochs(title):
     #plot embeddings_loss over all epochs of a model (to show progression)
+    #its like 20 graphs that open one after another
     dim = 64
     heavy_elem = 15
     X_train, X_test, y_train, y_test, vocab_size = get_data(heavy_elem = heavy_elem)
@@ -173,16 +181,17 @@ def compare_effective_dims(titles, parameters = None, epoch = None, plot = True)
 
     plt.yscale('log')
     xmin = 1
-    xmax = 10
+    xmax = 18
     train_range = (2*10**-5, 1.2*10**0)
     test_range = (2*10**-3, 1.2*10**0)
     for j in range(2):
         axs[j].set_xlim(xmin, xmax)
         
         axs[j].set_yscale('log')
-        axs[j].legend(prop={'size': 6})
-    #axs[0].set_ylim(test_range)
-    #axs[1].set_ylim(train_range)
+        axs[j].legend(prop={'size': 8})
+        #axs[j].legend()
+    axs[0].set_ylim(test_range)
+    axs[1].set_ylim(train_range)
     
     plt.xticks(ticks = list(range(xmin, xmax)))
     plt.subplots_adjust(hspace=0, wspace = 0)
@@ -198,6 +207,7 @@ def compare_effective_dims(titles, parameters = None, epoch = None, plot = True)
     return mplfig_to_npimage(fig)
 
 if __name__ == '__main__':
+    '''
     regs = [0, 2e-4, 2e-3, 2e-2, 2e-1, 2e0, 5e0]#[2, 1, 2e-1]
 
     #regs = [0, 0.1, 0.5, 1, 5]
@@ -214,15 +224,28 @@ if __name__ == '__main__':
     print(titles)
     compare_effective_dims(titles, epoch = 'best.pt')
     '''
-    titles = ['models/pcareg_heavy15/BasicModelSmall_regpca2.0_dimn/', 
-            'models/pcareg_heavy15/BasicModelSmall_regpca0_dimn/' ]
-    models = get_models(titles)
     heavy_elem = 15
     _, X_test, _, y_test, vocab_size = get_data(heavy_elem = heavy_elem)
     all_protons = torch.tensor(list(range(vocab_size[0])))
     all_neutrons = torch.tensor(list(range(vocab_size[1])))
-    for i, model in enumerate(models):
-        twodim_pca(model, all_protons, all_neutrons, title = titles[i])
-    '''
+
+    titles = []
+    #for regpca in [0, 0.0002, 0.002, 0.02, 0.2, 2.0, 5.0]:
+    #    titles.append(f'models/pcareg_heavy15/BasicModelSmall_regpca{regpca}_dimn')
+    #models = get_models(['models/pcareg_heavy15/BasicModelSmallerDropout_regpca0_wd0'])
+    #print(test_model(models[0], X_test, y_test))
+
+    base = 'models/pcareg_seeds/BasicModelSmall_'
+    #titles.append(base+'regpca0_dimn_seed1')
+    for seed in [30,31]:
+        titles.append(base+f'regpca2.0_dimn_seed{seed}')
+    models = get_models(titles)
+    for i in range(len(models)):
+        twodim_pca(models[i], titles[i])
+
+
+
+   # compare_effective_dims(titles)
+    
 
 

@@ -9,18 +9,22 @@ from sklearn.decomposition import PCA
 opt = 'data'
 
 
-if opt=='empirical':
-    basepath_sd = "models/empirical/epoch_19900.pt"
-    basepath_model = "models/empirical/model.pt"
-elif opt=='data':
-    basepath_sd = "models/data/epoch_19900.pt"
-    basepath_model = "models/data/model.pt"
+# obs = ['radius']
+obs = ['binding','radius', 'Z', 'N']
 
-sd = torch.load(basepath_sd)['model_state_dict']
-model = torch.load(basepath_model)
+if opt=='empirical':
+    basepath="models/empirical/"
+elif opt=='data':
+    basepath="models/"+'+'.join(obs)
+elif opt=='PySR':
+    basepath="models/PySR/"
+    
+model = torch.load(basepath+"/model.pt")
+sd = torch.load(basepath+"/epoch_990.pt")['model_state_dict']
+
 # %%
 
-_, _, _, _, _, _, vocab_size = get_data(opt,0) # vocab_size = (Z, N)
+_, _, _, _, vocab_size = get_data(opt,obs,0) # vocab_size = (Z, N)
 
 # hidden_dim = sd["emb.weight"].shape[1]
 # model = Model(vocab_size, hidden_dim).requires_grad_(False)
@@ -39,7 +43,7 @@ neutrons = model.emb_neutron(all_neutrons)
 # PCA the embeddings
 for p, ap in zip((protons, neutrons), (all_protons, all_neutrons)):
   plt.figure(figsize=(10,10))
-  pca = PCA(n_components=4)
+  pca = PCA(n_components=2)
   embs_pca = pca.fit_transform(p.detach().cpu().numpy())
 
   plt.scatter(*embs_pca.T, c=ap, cmap="coolwarm")

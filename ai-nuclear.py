@@ -7,7 +7,7 @@ from torch import nn
 from torch.utils.data import DataLoader, TensorDataset
 import tqdm
 import optuna
-from model import Model2
+from model import Model2, Model3, Model_multi
 from data import get_data, clear_y, yorig, rms
 from sklearn.decomposition import PCA
 import time    
@@ -23,7 +23,7 @@ def loss_true(loss_fn, y_dat, y0_dat, y_pred, n_obs): #returns the loss consider
   return loss
 
 def train(modeltype, lr, wd, alpha, hidden_dim, obs, n_epochs, basepath, device):
-  torch.manual_seed(1)
+  torch.manual_seed(100)
   os.makedirs(basepath, exist_ok=True)
   (X_train, X_test), (y_train, y_test), (y0_train, y0_test), (y0_mean, y0_std), vocab_size = get_data(opt,obs,heavy_mask)
 
@@ -35,7 +35,7 @@ def train(modeltype, lr, wd, alpha, hidden_dim, obs, n_epochs, basepath, device)
   all_protons = torch.tensor(list(range(vocab_size[0]))).to(device)
   all_neutrons = torch.tensor(list(range(vocab_size[1]))).to(device)
 
-  train_loader = DataLoader(TensorDataset(X_train, y_train, y0_train), batch_size=len(X_train), shuffle=True)
+  train_loader = DataLoader(TensorDataset(X_train, y_train, y0_train), batch_size=256, shuffle=True)
 
   n_obs = len(obs)
   model = modeltype(*vocab_size, hidden_dim, n_obs).to(device)
@@ -54,6 +54,7 @@ def train(modeltype, lr, wd, alpha, hidden_dim, obs, n_epochs, basepath, device)
     optimizer = early_optimizer# if i < len(bar)//2 else late_optimizer
     for X_batch, y_batch, y0_batch in train_loader:
       optimizer.zero_grad()
+      model.train()
       y_pred = model(X_batch)
       loss = loss_true(loss_fn, y_batch, y0_batch, y_pred, n_obs)             
       #loss += 2*model.alldims_loss(loss_fn,X_batch,y_batch)
@@ -61,14 +62,16 @@ def train(modeltype, lr, wd, alpha, hidden_dim, obs, n_epochs, basepath, device)
       loss.backward()
       optimizer.step()
     with torch.no_grad():
-      y_pred = model(X_test)
-      loss = loss_true(loss_fn, y_test, y0_test, y_pred, n_obs)  
-      train_loss = loss_true(loss_fn, y_train, y0_train, model(X_train), n_obs)         
+      model.eval()
+      train_loss = loss_true(loss_fn, y_batch, y0_batch, y_pred, n_obs)
+      y_pred = model(X_test)     
+      loss = loss_true(loss_fn, y_test, y0_test, y_pred, n_obs)   
+      rms0 = rms(y0_test, yorig(y_pred,y0_mean, y0_std),0)        
       if loss < lowest_loss:
           lowest_loss = loss
           best_state_dict = model.state_dict()
 
-      if i % 100 == 0:
+      if i % 10 == 0:
         torch.save({'epoch': i,
             'model_state_dict': model.state_dict(),
             'loss': loss}, basepath + f"epoch_{i}.pt")
@@ -83,12 +86,13 @@ def train(modeltype, lr, wd, alpha, hidden_dim, obs, n_epochs, basepath, device)
         pr_e = np.exp(entropy_protons)
         ne_e = np.exp(entropy_neutrons)
       
-      X = torch.cat((X_train,X_test), 0)
-      y0_dat = torch.cat((y0_train,y0_test), 0)
-      rms0 = rms(y0_dat, yorig(model(X),y0_mean, y0_std),0)   
+       # X = torch.cat((X_train,X_test), 0)
+       # y0_dat = torch.cat((y0_train,y0_test), 0)
+       # rms0 = rms(y0_dat, yorig(model(X),y0_mean, y0_std),0)  
+       
       bar.set_postfix(loss=loss.item(), train_loss=train_loss.item(), pr_e=pr_e, ne_e=ne_e, rms0=rms0.item())
       
-  torch.save(best_state_dict, basepath + "best.pt")
+  # torch.save(best_state_dict, basepath + "best.pt")
   torch.save(model.cpu().requires_grad_(False), os.path.join(basepath, "model.pt"))
   return lowest_loss.item()
 
@@ -111,9 +115,10 @@ start = time.time()
 
 #define the options, observables, mask
 opt = 'data'
-obs = ['binding','radius']
-
-heavy_mask = 0
+obs = ['binding','radius','qbm','abundance']
+#obs = ['half_life']
+#obs = ['qbm']
+heavy_mask = 2
 
 
 if opt=='empirical':
@@ -122,6 +127,8 @@ elif opt=='data':
     basepath="models/"+'+'.join(obs)+'/'
 elif opt=='PySR':
     basepath="models/PySR/"
+    
+# basepath = "models/test/"
 
 if not os.path.exists(basepath):
     os.makedirs(basepath)
@@ -138,7 +145,7 @@ def drange(start, stop, step):
 #         train(Model22, lr=lr, wd=wd, alpha=1, hidden_dim=64, n_epochs=3e3, basepath="models/test1", device=torch.device("cpu"))
 
 
-train(Model2, lr=0.0028 , wd=0.00067, alpha=1, hidden_dim=64, obs = obs, n_epochs=3e3, basepath=basepath, device=torch.device("cpu"))
+train(Model2, lr=0.0028 , wd=0.00067, alpha=0, hidden_dim=64, obs = obs, n_epochs=1e3, basepath=basepath, device=torch.device("cpu"))
 
 #bfp : lr=0.0028 , wd=0.00067
 

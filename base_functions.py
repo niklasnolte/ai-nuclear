@@ -9,8 +9,8 @@ import matplotlib.colors as mcolors
 import urllib.request
 from sklearn.model_selection import train_test_split
 from copy import deepcopy
-from train_arithmetic import get_data
-from BasicModelSmall import BasicModelSmall
+from train_arith_both import get_data
+from BasicModelSmall_only import BasicModelSmall
 
 from torch.utils.data import DataLoader, TensorDataset
 import tqdm

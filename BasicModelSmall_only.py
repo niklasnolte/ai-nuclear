@@ -2,9 +2,13 @@ import torch
 from torch import nn
 import matplotlib.pyplot as plt
 #from base_functions import get_index
-from train_arithmetic import train
+
+from train_arith_only import train
 from copy import deepcopy
 limit = 53
+from sklearn.decomposition import PCA
+import numpy as np
+import pandas as pd
 
 class BasicModelSmall(nn.Module):
   #predicts a+b mod 97
@@ -42,6 +46,27 @@ class BasicModelSmall(nn.Module):
       U, S, V = torch.linalg.svd(x, False)
       return x, U, S, V
 
+  def plot_embedding(self):
+    p = torch.tensor(self.emb_a.weight.data)
+    print(p.shape)
+    n = 2
+    pca = PCA(n_components=n)
+    embs_pca = pca.fit_transform(p.detach().cpu().numpy())
+
+    pca_var = pca.fit(p.detach().cpu().numpy()).explained_variance_ratio_
+    plt.xlabel(f'{n-1} dim: {100*pca_var[n-2]:.2f}% of variance')
+    plt.ylabel(f'{n} dim: {100*pca_var[n-1]:.4f}% of variance')
+    ap = range(limit)
+
+    first_dim = embs_pca[:, n-2].T
+    second_dim = embs_pca[:, n-1].T
+    plt.scatter(first_dim, second_dim, c=ap, cmap="coolwarm")
+    plt.plot(first_dim, second_dim,c = 'k', linewidth = 0.05)
+    for i, txt in enumerate(ap):
+      plt.annotate(txt, (embs_pca[i,0], embs_pca[i,1]))
+    plt.title('a+b and a-b; 0.6 test prop; 1e4 epochs')
+    plt.show()
+
   def evaluate_ndim(self, loss_fn, X_test, y_test, device = 'cuda', n = 2): # x: [ batch_size, 2 [n_protons, n_neutrons] ]
     a, U_p, S_p, Vh_p, b, U_n, S_n, Vh_n = self.get_pca(X_test)
 
@@ -52,7 +77,6 @@ class BasicModelSmall(nn.Module):
     b_ndim = b @ Vh_n.T @ mask_ndim @ Vh_n
 
     y_pred = torch.flatten(self.nonlinear(torch.hstack((a_ndim, b_ndim))))
-    print(y_test.shape, y_pred.shape, 'ndim')
     return loss_fn(y_test, y_pred)
 
     
@@ -66,16 +90,32 @@ class BasicModelSmall(nn.Module):
 
 
 if __name__ == '__main__':
-    dir = 'mod_arith'
-    for embed_dim in [256]:#, 2e-4, 2e-3, 2e-2, 2e-1, 2e0, 5e0]:
-        title = f'BasicModelSmall_regpca0_{embed_dim}dim'
-        print(title)
-        train(modelclass=BasicModelSmall, 
-                        lr=1e-2, 
-                        wd=1e-3, 
-                        embed_dim=embed_dim, 
-                        basepath=f"models/{dir}/{title}/", 
-                        device=torch.device("cuda"),
-                        title = title,
-                        reg_pca = 0, 
-                        )
+    dir = 'mod_arith_only'
+    embed_dim = 256
+    seed = 0
+    results = {'title': [], 'seed': [], 'test_size': [],'train_acc': [], 'test_acc': [], 'epochs': []}
+    for test_size in np.linspace(0.6, 0.95, 36):
+        for _ in range(3):
+          test_size = round(test_size, 2)
+          print(test_size)
+          seed += 1
+          title = f'BasicModelSmall_256dim_{test_size}ts_{seed}seed_only'
+          results['title'].append(title)
+          results['seed'].append(seed)
+          results['test_size'].append(test_size)
+          test_acc, train_acc, epochs = train(modelclass=BasicModelSmall, 
+                          lr=1e-2, 
+                          wd=1e-3,
+                          embed_dim=embed_dim, 
+                          basepath=f"models/{dir}/{title}/", 
+                          device=torch.device("cuda"),
+                          title = title,
+                          reg_pca = 0, 
+                          seed = seed,
+                          test_size=test_size
+                          )
+          results['test_acc'].append(test_acc)
+          results['train_acc'].append(train_acc)
+          results['epochs'].append(epochs)
+          df = pd.DataFrame.from_dict(results)
+          df.to_csv(dir+'_fine.csv')

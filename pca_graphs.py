@@ -9,6 +9,7 @@ from sklearn.decomposition import PCA
 from copy import deepcopy
 import matplotlib.colors as mcolors
 from moviepy.video.io.bindings import mplfig_to_npimage
+from BasicModelSmall_only import BasicModelSmall
 
 
 
@@ -48,6 +49,7 @@ def twodim_pca(model, title = None, heavy_elem = 15):
     neutrons = model.emb_neutron(all_neutrons)
     loss = test_model(model, X_test, y_test)
     for p, ap in zip((protons, neutrons), (all_protons, all_neutrons)):
+        print(p.shape)
         plt.figure(figsize=(10,10))
 
         pca = PCA(n_components=2)
@@ -58,6 +60,8 @@ def twodim_pca(model, title = None, heavy_elem = 15):
         plt.scatter(*embs_pca.T, c=ap, cmap="coolwarm")
         plt.plot(*embs_pca.T,c = 'k', linewidth = 0.2)
         #annotate
+        print(ap)
+        print(ap.shape)
         for i, txt in enumerate(ap):
             plt.annotate(heavy_elem+txt.item(), (embs_pca[i,0], embs_pca[i,1]))
         graph_title = "protons 2 component PCA analysis" if p is protons else "neutrons 2 component PCA analysis"
@@ -235,13 +239,12 @@ if __name__ == '__main__':
     #models = get_models(['models/pcareg_heavy15/BasicModelSmallerDropout_regpca0_wd0'])
     #print(test_model(models[0], X_test, y_test))
 
-    base = 'models/pcareg_seeds/BasicModelSmall_'
-    #titles.append(base+'regpca0_dimn_seed1')
-    for seed in [30,31]:
-        titles.append(base+f'regpca2.0_dimn_seed{seed}')
-    models = get_models(titles)
-    for i in range(len(models)):
-        twodim_pca(models[i], titles[i])
+    base = 'models/mod_arith/BasicModelSmall_regpca0_256dim_both'
+    titles.append(base)
+    model = get_models(titles)[0]
+    model.plot_embedding()
+    #for i in range(1):
+    #    twodim_pca(models[i], titles[i])
 
 
 

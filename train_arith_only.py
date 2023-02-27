@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 import urllib.request
 limit = 53
 
-def get_data():
+def get_data(test_size = 0.2, seed = 42):
     Xs = []
     ys = []
     for a in range(limit):
@@ -20,21 +20,18 @@ def get_data():
             y = (a+b)%limit
             Xs.append(x)
             ys.append(y)
-    Xs, ys = np.array(Xs), np.array(ys)
-    #y_mean = ys.mean()
-    #y_std = ys.std()
-    #ys = (ys - y_mean) / y_std
     Xs, ys = torch.tensor(Xs).int(), torch.tensor(ys).long()
-    X_train, X_test, y_train, y_test = train_test_split(Xs, ys, test_size=0.2, random_state=42)
+    test_size = test_size
+    X_train, X_test, y_train, y_test = train_test_split(Xs, ys, test_size=test_size, random_state=seed)
     vocab_size = (limit, limit) 
     return X_train, X_test, y_train, y_test, vocab_size
 
 
-def train(modelclass, lr, wd, embed_dim, basepath, device, title, reg_pca = 1, seed = 1):
+def train(modelclass, lr, wd, embed_dim, basepath, device, title, reg_pca = 0, seed = 1, test_size = 0.2):
   #train just for modular arithmetic. gets rid of norm and assums regtype is always simn
   torch.manual_seed(seed)
   os.makedirs(basepath, exist_ok=True)
-  X_train, X_test, y_train, y_test, vocab_size = get_data() 
+  X_train, X_test, y_train, y_test, vocab_size = get_data(test_size = test_size, seed = seed) 
 
   X_train = X_train.to(device)
   X_test = X_test.to(device)
@@ -52,7 +49,7 @@ def train(modelclass, lr, wd, embed_dim, basepath, device, title, reg_pca = 1, s
   early_optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=wd)
   late_optimizer = torch.optim.SGD(model.parameters(), lr=lr, weight_decay=wd)
 
-  bar = tqdm.tqdm(range(int(2e4)))
+  bar = tqdm.tqdm(range(int(1e4)))
   lowest_loss = 1e10
 
   loss_list = []
@@ -87,7 +84,7 @@ def train(modelclass, lr, wd, embed_dim, basepath, device, title, reg_pca = 1, s
       if loss < lowest_loss:
         lowest_loss = loss
         best_state_dict = model.state_dict()
-      if i % 10 == 0:
+      if i % 500 == 0:
         torch.save(model.state_dict(), basepath + f"epoch{i}.pt")
 
       if i % 100 == 0:
@@ -109,10 +106,11 @@ def train(modelclass, lr, wd, embed_dim, basepath, device, title, reg_pca = 1, s
       torch.save(model.state_dict(), basepath + f"latest.pt")
       test_acc = (y_test == y_pred.argmax(dim=1)).float().mean()
       bar.set_postfix(loss=loss.item(), train_acc = train_acc.item(), test_accuracy = test_acc.item(), train_loss=train_loss.item(), a_ent=a_entropy, b_ent=b_entropy)
-
+      if test_acc.item() > 1-10**-6:
+         return test_acc.item(), train_acc.item(), i
   torch.save(best_state_dict, basepath + "best.pt")
   torch.save(model.cpu().requires_grad_(False), os.path.join(basepath, "model.pt"))
-  return lowest_loss.item()
+  return test_acc.item(), train_acc.item(), i
 
 
 def effective_dim(model, all_a, all_b):

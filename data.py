@@ -9,9 +9,8 @@ from sklearn.preprocessing import (
     StandardScaler,
 )
 import torch
+import argparse
 from collections import namedtuple, OrderedDict
-from config import Targets, MiscConfig
-
 
 def apply_to_df_col(column):
     def wrapper(fn):
@@ -193,7 +192,7 @@ Data = namedtuple(
 )
 
 
-def prepare_data(columns=None, recreate=False):
+def prepare_data(config : argparse.Namespace, recreate : bool =False):
     """Prepare data to be used for training. Transforms data to tensors, gets tokens X,targets y,
     vocab size and output map which is a dict of {target:output_shape}. Usually output_shape is 1 for regression
     and n_classes for classification.
@@ -204,49 +203,44 @@ def prepare_data(columns=None, recreate=False):
     returns (Data): namedtuple of X, y, vocab_size, output_map, quantile_transformer
     """
     targets = get_targets(get_data(recreate=recreate))
-    columns = set(targets.columns) if columns is None else set(columns)
 
     X = torch.tensor(targets[["z", "n"]].values).long()
 
     # classification targets increasing integers
-    for col in Targets.classification:
-        if col in columns:
-            targets[col] = targets[col].astype("category").cat.codes
-            # put nans back
-            targets[col] = targets[col].replace(-1, np.nan)
+    for col in config.TARGETS_CLASSIFICATION:
+        targets[col] = targets[col].astype("category").cat.codes
+        # put nans back
+        targets[col] = targets[col].replace(-1, np.nan)
 
     vocab_size = (targets.z.max() + 1, targets.n.max() + 1)
     output_map = OrderedDict()
     class_weights = []
-    for target in Targets.classification:
-        if target in columns:
-            output_map[target] = targets[target].nunique()
-            weights = 1 / torch.tensor(
-                targets[target].value_counts(normalize=True).sort_index().values
-            )
-            weights = weights / weights.sum()
-            # tensor of weights for each sample
-            class_weights.append(weights[targets[target].values].float())
-            # breakpoint check if class weights are correct
-    if class_weights:  # len == 0, otherwise torch.stack complains
-        class_weights = torch.stack(class_weights).T
-    for target in Targets.regression:
-        if target in columns:
-            output_map[target] = 1
+    for target in config.TARGETS_CLASSIFICATION:
+        output_map[target] = targets[target].nunique()
+        invweights = torch.tensor(
+            targets[target].value_counts(normalize=True).sort_index().values
+        )
+        # normalize weights -> w = 1 / (n_classes * number_of_occurrences)
+        weights = 1 / (invweights * output_map[target])
+        # tensor of weights for each sample
+        class_weights.append(weights[targets[target].values].float())
+    if class_weights:
+       class_weights = torch.stack(class_weights).T.to(config.DEV)
+    for target in config.TARGETS_REGRESSION:
+        output_map[target] = 1
+
 
     # qt = QuantileTransformer(output_distribution="uniform")
     feature_transformer = RobustScaler()
-    regression_target_names = [t for t in Targets.regression if t in columns]
-    if len(regression_target_names) > 0:
-        targets[regression_target_names] = feature_transformer.fit_transform(
-            targets[regression_target_names].values
+    if len(config.TARGETS_REGRESSION) > 0:
+        targets[config.TARGETS_REGRESSION] = feature_transformer.fit_transform(
+            targets[config.TARGETS_REGRESSION].values
         )
 
     y = torch.tensor(targets[list(output_map.keys())].values).float()
-    device = torch.device(MiscConfig.DEVICE)
     return Data(
-        X.to(device),
-        y.to(device),
+        X.to(config.DEV),
+        y.to(config.DEV),
         vocab_size,
         output_map,
         feature_transformer,

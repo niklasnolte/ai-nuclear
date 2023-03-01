@@ -8,14 +8,14 @@ import os
 
 torch.manual_seed(TrainConfig.SEED)
 
-for target in ["isospin"]:
+for target in ["binding_energy"]:
     columns = [target]
     data = prepare_data(columns=columns)
     train_mask, test_mask = train_test_split(
         data, train_frac=TrainConfig.TRAIN_FRAC, seed=TrainConfig.SEED
     )
 
-    save_path = os.path.join(TrainConfig.ROOTPATH, TrainConfig.MODEL, '_'.join(columns))
+    save_path = os.path.join(TrainConfig.ROOTPATH, TrainConfig.MODEL, "_".join(columns))
     os.makedirs(save_path, exist_ok=True)
 
     # set up model
@@ -37,9 +37,9 @@ for target in ["isospin"]:
         model.parameters(), lr=TrainConfig.LR, weight_decay=TrainConfig.WD
     )
 
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-        optimizer, T_max=TrainConfig.EPOCHS
-    )
+    # scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+    #     optimizer, T_max=TrainConfig.EPOCHS
+    # )
 
     # remove old models
     for f in os.listdir(save_path):
@@ -55,14 +55,28 @@ for target in ["isospin"]:
         loss = train_loss.mean()
         loss.backward()
         optimizer.step()
-        scheduler.step()
+        # scheduler.step()
         if epoch % 100 == 0:
             with torch.no_grad():
                 # Test
                 model.eval()
-                val_acc = metric_by_task(out[test_mask], data.y[test_mask], data.output_map, data.regression_transformer)
-                train_acc = metric_by_task(out[train_mask], data.y[train_mask], data.output_map, data.regression_transformer)
-                val_loss = loss_by_task(out[test_mask], data.y[test_mask], data.output_map).mean()
+                val_acc = metric_by_task(
+                    out[test_mask],
+                    data.y[test_mask],
+                    data.output_map,
+                    qt=data.regression_transformer,
+                    weights=data.class_weights[test_mask],
+                )
+                train_acc = metric_by_task(
+                    out[train_mask],
+                    data.y[train_mask],
+                    data.output_map,
+                    qt=data.regression_transformer,
+                    weights=data.class_weights[train_mask],
+                )
+                val_loss = loss_by_task(
+                    out[test_mask], data.y[test_mask], data.output_map
+                ).mean()
             msg = f"Columns: {', '.join(columns)}: Train: {train_loss.item():.2e}|{train_acc.item():.2e}, "
             msg += f"Val: {val_loss.item():.2e}|{val_acc.item():.2e}"
             bar.set_description(msg)

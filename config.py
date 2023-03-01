@@ -15,13 +15,15 @@ class Targets:
         "sp",
     ]
 
-
 class TrainConfig:
     WD = 1e-4
-    LR = 1e-3
+    LR = 5e-4
     EPOCHS = 100000
     TRAIN_FRAC = 0.8
     HIDDEN_DIM = 256
     SEED = 1
     MODEL = "baseline"
     ROOTPATH = "models"
+
+class MiscConfig:
+    DEVICE = "cpu"

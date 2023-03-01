@@ -14,12 +14,10 @@ class BaselineModel(nn.Module):
         self.nonlinear = nn.Sequential(
             nn.Linear(2 * hidden_dim, hidden_dim),
             nn.SiLU(),
-            nn.Dropout(0.1),
+            nn.Dropout(.1),
             nn.Linear(hidden_dim, hidden_dim),
             nn.SiLU(),
-            nn.Dropout(0.1),
-            nn.Linear(hidden_dim, hidden_dim),
-            nn.SiLU(),
+            nn.Dropout(.1),
             nn.Linear(hidden_dim, output_dim),
         )
         # bigger init

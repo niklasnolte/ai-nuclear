@@ -3,6 +3,7 @@ import torch
 from torch.nn import functional as F
 from sklearn.preprocessing import QuantileTransformer
 import pandas as pd
+from data import Data
 
 
 def loss_by_task(
@@ -38,16 +39,31 @@ def loss_by_task(
             output_column += 1
     return loss
 
+def get_accuracy(output:torch.Tensor, target:torch.Tensor, class_weights: torch.Tensor=None):
+    """
+    output: [batch_size, output_dim]
+    target: [batch_size]
+    class_weights: [batch_size]
+    """
+    output = output.argmax(dim=1)
+    assert output.shape == target.shape
+    if class_weights is None:
+        return (output == target).float().mean()
+    return ((output == target).float() * class_weights).sum() / class_weights.sum()
 
 def metric_by_task(
     output: torch.Tensor,
     targets: torch.Tensor,
     output_map: dict,
+    class_weights: torch.Tensor = None,
     qt: QuantileTransformer = None,
 ) -> torch.Tensor:
     """
     output: [batch_size, output_dim]
     targets: [batch_size, targets_dim]
+    output_map: dict
+    class_weights: [batch_size, targets_dim]
+    qt: QuantileTransformer
 
     calculate the metrics by task:
     For classification targets, accuracy
@@ -67,11 +83,11 @@ def metric_by_task(
     target_column = 0
     for target_name in classification_targets:
         mask = ~torch.isnan(targets[:, target_column])
-        masked_target = targets[:, target_column][mask]
+        masked_target = targets[:, target_column][mask].long()
         size = output_map[target_name]
         out = output[:, output_column : output_column + size]
         metrics[target_column] = (
-            100 * (out.argmax(dim=1)[mask] == masked_target.long()).float().mean()
+            100 * get_accuracy(out[mask], masked_target, class_weights[:, target_column][mask])
         )
         output_column += size
         target_column += 1

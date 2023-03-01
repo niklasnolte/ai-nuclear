@@ -1,12 +1,14 @@
 import torch
 import tqdm
 from data import prepare_data, train_test_split
-from config import Targets, TrainConfig
+from config import Targets, TrainConfig, MiscConfig
 from model import BaselineModel, ResidualModel
 from loss import loss_by_task, metric_by_task
 import os
 
 torch.manual_seed(TrainConfig.SEED)
+
+device = torch.device(MiscConfig.DEVICE)
 
 data = prepare_data()
 train_mask, test_mask = train_test_split(
@@ -29,7 +31,7 @@ model = model_class(
     n_neutrons,
     hidden_dim=TrainConfig.HIDDEN_DIM,
     output_dim=sum(output_dims),
-)
+).to(device)
 
 optimizer = torch.optim.Adam(
     model.parameters(), lr=TrainConfig.LR, weight_decay=TrainConfig.WD
@@ -63,7 +65,8 @@ for epoch in bar:
                 out[test_mask],
                 data.y[test_mask],
                 data.output_map,
-                data.regression_transformer,
+                class_weights=data.class_weights[test_mask],
+                qt=data.regression_transformer,
             )
             msg = f"\nEpoch {epoch} Train losses:\n"
             for i, target in enumerate(data.output_map.keys()):

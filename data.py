@@ -2,10 +2,15 @@ import numpy as np
 import pandas as pd
 import urllib.request
 import os
-from sklearn.preprocessing import QuantileTransformer
+from sklearn.preprocessing import (
+    QuantileTransformer,
+    MinMaxScaler,
+    RobustScaler,
+    StandardScaler,
+)
 import torch
 from collections import namedtuple, OrderedDict
-from config import Targets
+from config import Targets, MiscConfig
 
 
 def apply_to_df_col(column):
@@ -177,15 +182,18 @@ def get_data(recreate=False):
         df.to_csv("data/ground_states.csv", index=False)
     else:
         df = pd.read_csv("data/ground_states.csv")
+
+    df = df[df.z > 15]  # TODO remove this line
     return df
 
 
 Data = namedtuple(
-    "Data", ["X", "y", "vocab_size", "output_map", "regression_transformer"]
+    "Data",
+    ["X", "y", "vocab_size", "output_map", "regression_transformer", "class_weights"],
 )
 
 
-def prepare_data(columns = None, recreate=False):
+def prepare_data(columns=None, recreate=False):
     """Prepare data to be used for training. Transforms data to tensors, gets tokens X,targets y,
     vocab size and output map which is a dict of {target:output_shape}. Usually output_shape is 1 for regression
     and n_classes for classification.
@@ -207,29 +215,48 @@ def prepare_data(columns = None, recreate=False):
             # put nans back
             targets[col] = targets[col].replace(-1, np.nan)
 
-    vocab_size = (targets.z.nunique(), targets.n.nunique())
+    vocab_size = (targets.z.max() + 1, targets.n.max() + 1)
     output_map = OrderedDict()
+    class_weights = []
     for target in Targets.classification:
         if target in columns:
             output_map[target] = targets[target].nunique()
+            weights = 1 / torch.tensor(
+                targets[target].value_counts(normalize=True).sort_index().values
+            )
+            weights = weights / weights.sum()
+            # tensor of weights for each sample
+            class_weights.append(weights[targets[target].values].float())
+            # breakpoint check if class weights are correct
+    if class_weights:  # len == 0, otherwise torch.stack complains
+        class_weights = torch.stack(class_weights).T
     for target in Targets.regression:
         if target in columns:
             output_map[target] = 1
 
     # qt = QuantileTransformer(output_distribution="uniform")
-    # regression_target_names = [t for t in Targets.regression if t in columns]
-    # if len(regression_target_names) > 0:
-    #     targets[regression_target_names] = qt.fit_transform(
-    #         targets[regression_target_names].values
-    #     )
+    feature_transformer = RobustScaler()
+    regression_target_names = [t for t in Targets.regression if t in columns]
+    if len(regression_target_names) > 0:
+        targets[regression_target_names] = feature_transformer.fit_transform(
+            targets[regression_target_names].values
+        )
 
     y = torch.tensor(targets[list(output_map.keys())].values).float()
-    return Data(X, y, vocab_size, output_map, None)
-    return Data(X, y, vocab_size, output_map, qt)
+    device = torch.device(MiscConfig.DEVICE)
+    return Data(
+        X.to(device),
+        y.to(device),
+        vocab_size,
+        output_map,
+        feature_transformer,
+        class_weights,
+    )
 
 
 def train_test_split(data, train_frac, seed=1):
+    device = data.X.device
     torch.manual_seed(seed)
     train_mask = torch.rand(data.X.shape[0]) < train_frac
     test_mask = ~train_mask
-    return train_mask, test_mask
+    return train_mask.to(device), test_mask.to(device)

@@ -4,7 +4,7 @@ import torch
 import argparse
 from data import prepare_data, train_test_split
 from model import get_model_and_optim
-from loss import loss_by_task, metric_by_task
+from loss import loss_by_task, metric_by_task, weight_by_task
 
 
 def train_FULL(args: argparse.Namespace, basedir: str):
@@ -14,7 +14,7 @@ def train_FULL(args: argparse.Namespace, basedir: str):
     )
 
     model, optimizer = get_model_and_optim(data, args)
-
+    weights = weight_by_task(data.output_map, args)
     bar = tqdm.trange(args.EPOCHS)
     for epoch in bar:
         # Train
@@ -24,6 +24,7 @@ def train_FULL(args: argparse.Namespace, basedir: str):
         train_loss = loss_by_task(
             out[train_mask], data.y[train_mask], data.output_map, args
         )
+        loss = weights * train_loss
         loss = train_loss.mean()
         loss.backward()
         optimizer.step()

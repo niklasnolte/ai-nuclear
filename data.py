@@ -229,12 +229,12 @@ def prepare_data(config : argparse.Namespace, recreate : bool =False):
     for target in config.TARGETS_REGRESSION:
         output_map[target] = 1
 
-
+    reg_columns = list(config.TARGETS_REGRESSION)
     # qt = QuantileTransformer(output_distribution="uniform")
     feature_transformer = RobustScaler()
-    if len(config.TARGETS_REGRESSION) > 0:
-        targets[config.TARGETS_REGRESSION] = feature_transformer.fit_transform(
-            targets[config.TARGETS_REGRESSION].values
+    if len(reg_columns) > 0:
+        targets[reg_columns] = feature_transformer.fit_transform(
+            targets[reg_columns].values
         )
 
     y = torch.tensor(targets[list(output_map.keys())].values).float()

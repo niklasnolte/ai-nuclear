@@ -1,24 +1,26 @@
 import os
+import config_utils
 import config
 import numpy
+import snakemake
 
-def get_slurm_extra(gpu=True):
-  if config.SLURM and gpu:
+def get_slurm_extra():
+  if config.GPU:
     return " ".join([
       "--gres=gpu:1",
       "--partition=submit-gpu",
       "--mem=5G",
     ])
   else:
-    return ""
+    return "--mem=5G"
 
 class Locations:
-  FULL = os.path.join(config.ROOT, config.get_name(config.Task.FULL))
+  FULL = os.path.join(config.ROOT, config_utils.get_name(config.Task.FULL))
 
 rule all:
   input:
     expand(Locations.FULL,
-            **config.Task.FULL.value)
+            **config_utils.serialize_elements_in_task(config.Task.FULL.value))
 
 rule train_FULL:
   output:
@@ -27,7 +29,7 @@ rule train_FULL:
     slurm_extra=get_slurm_extra()
   run:
     shell(f"mkdir -p {output.cps}")
-    cmd = config.train_cmd(config.Task.RANDOM, wildcards)
+    cmd = config_utils.train_cmd(config.Task.RANDOM, wildcards)
     shell(cmd)
 
 

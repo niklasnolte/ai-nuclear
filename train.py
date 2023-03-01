@@ -1,7 +1,8 @@
 import torch
 import os
 import wandb
-from config import parse_arguments_and_get_name, ROOT, Task
+from config import ROOT, Task
+from config_utils import parse_arguments_and_get_name
 from train_full import train_FULL
 
 # load TASK from env
@@ -22,6 +23,7 @@ if args.WANDB:
     wandb.save("train.py")
     wandb.save("train_full.py")
     wandb.save("config.py")
+    wandb.save("config_utils.py")
     wandb.save("model.py")
     wandb.save("data.py")
     wandb.save("loss.py")

@@ -4,6 +4,13 @@ from sklearn.preprocessing import QuantileTransformer
 import argparse
 import math
 
+def weight_by_task(output_map: dict, config: argparse.Namespace) -> torch.Tensor:
+    weights = []
+    for target_name in output_map.keys():
+        weight = config.TARGETS_CLASSIFICATION.get(target_name, config.TARGETS_REGRESSION[target_name])
+        weights.append(weight)
+    return torch.tensor(weights)
+
 
 def loss_by_task(
     output: torch.Tensor, targets: torch.Tensor, output_map: dict, config: argparse.Namespace

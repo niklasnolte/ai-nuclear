@@ -29,5 +29,5 @@ rule train_FULL:
     slurm_extra=get_slurm_extra()
   run:
     shell(f"mkdir -p {output.cps}")
-    cmd = config_utils.train_cmd(config.Task.RANDOM, wildcards)
+    cmd = config.train_cmd(config.Task.FULL, wildcards)
     shell(cmd)

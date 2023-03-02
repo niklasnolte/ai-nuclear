@@ -3,8 +3,8 @@ from config_utils import serialize_elements_in_task
 
 ROOT = "results"
 WANDB = True
-SLURM = False
-GPU = True
+SLURM = True
+GPU = False
 
 
 class Task(Enum):

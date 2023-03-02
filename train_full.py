@@ -2,6 +2,8 @@ import os
 import tqdm
 import torch
 import argparse
+import wandb
+import config
 from data import prepare_data, train_test_split
 from model import get_model_and_optim
 from loss import loss_by_task, metric_by_task, weight_by_task
@@ -38,6 +40,17 @@ def train_FULL(args: argparse.Namespace, basedir: str):
                     args,
                     qt=data.regression_transformer,
                 )
+                # save to wandb
+                if config.WANDB:
+                    wandb.log({"epoch": epoch})
+                    for i, target in enumerate(data.output_map.keys()):
+                        wandb.log(
+                            {
+                                f"train_{target}": train_loss[i].item(),
+                                f"val_{target}": val_loss[i].item(),
+                            }
+                        )
+
                 msg = f"\nEpoch {epoch} Train losses:\n"
                 for i, target in enumerate(data.output_map.keys()):
                     msg += f"{target}: {train_loss[i].item():.2e}\n"

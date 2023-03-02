@@ -7,9 +7,12 @@ import math
 def weight_by_task(output_map: dict, config: argparse.Namespace) -> torch.Tensor:
     weights = []
     for target_name in output_map.keys():
-        weight = config.TARGETS_CLASSIFICATION.get(target_name, config.TARGETS_REGRESSION[target_name])
+        if target_name in config.TARGETS_CLASSIFICATION:
+            weight = config.TARGETS_CLASSIFICATION[target_name]
+        else:
+            weight = config.TARGETS_REGRESSION[target_name]
         weights.append(weight)
-    return torch.tensor(weights)
+    return torch.tensor(weights) / sum(weights)
 
 
 def loss_by_task(
@@ -49,7 +52,6 @@ def get_balanced_accuracy(output:torch.Tensor, target:torch.Tensor):
     """
     output: [batch_size, output_dim]
     target: [batch_size]
-    class_weights: [batch_size]
     """
     target = target.long()
     output = torch.argmax(output, dim=1)
@@ -71,7 +73,6 @@ def metric_by_task(
     output: [batch_size, output_dim]
     targets: [batch_size, targets_dim]
     output_map: dict
-    class_weights: [batch_size, targets_dim]
     qt: QuantileTransformer
 
     calculate the metrics by task:

@@ -20,22 +20,14 @@ class Locations:
 rule all:
   input:
     expand(Locations.FULL,
-            **config_utils.serialize_elements_in_task(config.Task.FULL.value))
+            **config.Task.FULL.value)
 
 rule train_FULL:
   output:
-    cps = directory(Locations.FULL) # "results/{wd}_{lr}/model.pt"
+    cps = directory(Locations.FULL)
   resources:
     slurm_extra=get_slurm_extra()
   run:
     shell(f"mkdir -p {output.cps}")
     cmd = config_utils.train_cmd(config.Task.RANDOM, wildcards)
     shell(cmd)
-
-
-# rule all:
-  # [ "results/.1_.1/model.pt", ... ]
-
-# rule train_FULL:
-  # "results/{wd}_{lr}/model.pt"
-  # "results/.1_.1/model.pt" -> wildcards = {wd: .1, lr: .1}

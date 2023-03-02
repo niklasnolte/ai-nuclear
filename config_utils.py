@@ -3,13 +3,15 @@ import argparse
 
 
 def _serialize_dict(targets: dict) -> str:
-    return ",".join([f"{k};{v}" for k, v in targets.items()])
+    if targets == {}:
+      return "None"
+    return "-".join([f"{k}:{v}" for k, v in targets.items()])
 
 
 def _deserialize_dict(targets: str) -> dict:
-    if targets == "":
+    if targets == "None":
         return {}
-    return {k: float(v) for k, v in [t.split(";") for t in targets.split(",")]}
+    return {k: float(v) for k, v in [t.split(":") for t in targets.split("-")]}
 
 
 def serialize_elements_in_task(task: dict):

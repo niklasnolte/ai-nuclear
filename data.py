@@ -188,7 +188,7 @@ def get_data(recreate=False):
 
 Data = namedtuple(
     "Data",
-    ["X", "y", "vocab_size", "output_map", "regression_transformer", "class_weights"],
+    ["X", "y", "vocab_size", "output_map", "regression_transformer"],
 )
 
 
@@ -214,18 +214,9 @@ def prepare_data(config : argparse.Namespace, recreate : bool =False):
 
     vocab_size = (targets.z.max() + 1, targets.n.max() + 1)
     output_map = OrderedDict()
-    class_weights = []
     for target in config.TARGETS_CLASSIFICATION:
         output_map[target] = targets[target].nunique()
-        invweights = torch.tensor(
-            targets[target].value_counts(normalize=True).sort_index().values
-        )
-        # normalize weights -> w = 1 / (n_classes * number_of_occurrences)
-        weights = 1 / (invweights * output_map[target])
-        # tensor of weights for each sample
-        class_weights.append(weights[targets[target].values].float())
-    if class_weights:
-       class_weights = torch.stack(class_weights).T.to(config.DEV)
+
     for target in config.TARGETS_REGRESSION:
         output_map[target] = 1
 
@@ -244,7 +235,6 @@ def prepare_data(config : argparse.Namespace, recreate : bool =False):
         vocab_size,
         output_map,
         feature_transformer,
-        class_weights,
     )
 
 

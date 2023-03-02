@@ -6,39 +6,70 @@ WANDB = True
 SLURM = False
 GPU = True
 
+
 class Task(Enum):
     # make sure that the tasks don't have exactly the same config
     # otherwise enum is a bitch
-    FULL = serialize_elements_in_task(dict(
-        WD=[1e-2, 3e-3, 1e-3, 3e-4, 1e-4],
-        LR=[1e-1, 5e-2, 1e-2],
-        EPOCHS=[10000],
-        TRAIN_FRAC=[0.8],
-        HIDDEN_DIM=[256, 128],
-        SEED=[0, 1, 2, 3],
-        MODEL=["baseline"],
-        TARGETS_CLASSIFICATION=[
-            {},
-            {"stability": 1, "parity": 1, "spin": 1, "isospin": 1},
-            {"stability": 1, "parity": 1, "spin": 1},
-        ],
-        TARGETS_REGRESSION=[
-            {
-                "z": 1,
-                "n": 1,
-                "binding_energy": 1,
-                "radius": 1,
-                "half_life_sec": 1,
-                "abundance": 1,
-                "qa": 1,
-                "qbm": 1,
-                "qbm_n": 1,
-                "qec": 1,
-                "sn": 1,
-                "sp": 1,
-            }
-        ],
-    ))
+    FULL = serialize_elements_in_task(
+        dict(
+            WD=[1e-2, 3e-3, 1e-3],
+            LR=[1e-1, 5e-2, 1e-2],
+            EPOCHS=[30000],
+            TRAIN_FRAC=[0.8],
+            HIDDEN_DIM=[256, 128],
+            SEED=[0, 1, 2],
+            MODEL=["baseline"],
+            TARGETS_CLASSIFICATION=[
+                {},
+                {"stability": 1, "parity": 1, "spin": 1, "isospin": 1},
+                {"stability": 1, "parity": 1, "spin": 1},
+            ],
+            TARGETS_REGRESSION=[
+                {
+                    "z": 1,
+                    "n": 1,
+                    "binding_energy": 1,
+                    "radius": 1,
+                    "half_life_sec": 1,
+                    "abundance": 1,
+                    "qa": 1,
+                    "qbm": 1,
+                    "qbm_n": 1,
+                    "qec": 1,
+                    "sn": 1,
+                    "sp": 1,
+                },
+                {
+                    "z": 1,
+                    "n": 1,
+                    "binding_energy": 5,
+                    "radius": 1,
+                    "half_life_sec": 1,
+                    "abundance": 1,
+                    "qa": 1,
+                    "qbm": 1,
+                    "qbm_n": 1,
+                    "qec": 1,
+                    "sn": 1,
+                    "sp": 1,
+                },
+                {
+                    "z": 5,
+                    "n": 5,
+                    "binding_energy": 1,
+                    "radius": 1,
+                    "half_life_sec": 1,
+                    "abundance": 1,
+                    "qa": 1,
+                    "qbm": 1,
+                    "qbm_n": 1,
+                    "qec": 1,
+                    "sn": 1,
+                    "sp": 1,
+                },
+            ],
+        )
+    )
 
     BASELINE = dict()
 

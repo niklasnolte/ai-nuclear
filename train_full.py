@@ -24,8 +24,7 @@ def train_FULL(args: argparse.Namespace, basedir: str):
         train_loss = loss_by_task(
             out[train_mask], data.y[train_mask], data.output_map, args
         )
-        loss = weights * train_loss
-        loss = train_loss.mean()
+        loss = (weights * train_loss).mean()
         loss.backward()
         optimizer.step()
         if epoch % 100 == 0:
@@ -41,10 +40,10 @@ def train_FULL(args: argparse.Namespace, basedir: str):
                 )
                 msg = f"\nEpoch {epoch} Train losses:\n"
                 for i, target in enumerate(data.output_map.keys()):
-                    msg += f"{target}: {train_loss[i].item():.3f}\n"
+                    msg += f"{target}: {train_loss[i].item():.2e}\n"
                 msg += f"\nEpoch {epoch} Val metrics:\n"
                 for i, target in enumerate(data.output_map.keys()):
-                    msg += f"{target}: {val_loss[i].item():.3f}\n"
+                    msg += f"{target}: {val_loss[i].item():.4f}\n"
             print(msg)
             # save model
             torch.save(model.state_dict(), os.path.join(basedir, f"model_{epoch}.pt"))

@@ -7,9 +7,12 @@ from typing import Callable, Optional
 from data import Data
 
 
+
+
 class BaselineModel(nn.Module):
     def __init__(self, n_protons, n_neutrons, hidden_dim, output_dim):
         super().__init__()
+        self.hidden_dim = hidden_dim
         self.emb_proton = nn.Embedding(
             n_protons, hidden_dim
         )  # [ batch_size, hidden_dim ]
@@ -32,6 +35,32 @@ class BaselineModel(nn.Module):
     def forward(self, x):  # x: [ batch_size, 2 [n_protons, n_neutrons] ]
         proton = self.emb_proton(x[:, 0])  # [ batch_size, hidden_dim ]
         neutron = self.emb_neutron(x[:, 1])  # [ batch_size, hidden_dim ]
+        return self.run_proton_neutron(proton, neutron)
+
+    
+    def forward_ndim(self, x, n):
+        pemb_weights = self.emb_proton.weight
+        nemb_weights = self.emb_neutron.weight
+        
+        U_p, S_p, Vh_p = torch.linalg.svd(pemb_weights, False)
+        U_n, S_n, Vh_n = torch.linalg.svd(nemb_weights, False)
+        p_mask_ndim = torch.eye(S_p.shape[0])
+        p_mask_ndim[n:] = 0
+
+        n_mask_ndim = torch.eye(S_n.shape[0])
+        n_mask_ndim[n:] = 0
+
+        pemb_ndim = pemb_weights @ Vh_p.T @ p_mask_ndim @ Vh_p
+        nemb_ndim = nemb_weights @ Vh_n.T @ n_mask_ndim @ Vh_n
+        
+        proton_ndim = pemb_ndim[x[:, 0]]
+        neutron_ndim = nemb_ndim[x[:, 1]]
+
+        return self.run_proton_neutron(proton_ndim, neutron_ndim)
+
+
+    
+    def run_proton_neutron(self, proton, neutron):
         x = torch.cat([proton, neutron], dim=1)  # [ batch_size, 2 * hidden_dim ]
         x = self.nonlinear(x)  # [ batch_size, hidden_dim ]
         x = self.readout(x)  # [ batch_size, output_dim ]

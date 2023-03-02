@@ -1,3 +1,7 @@
 models
 __pycache__
 data
+results
+wandb
+plots
+models

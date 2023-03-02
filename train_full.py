@@ -8,12 +8,12 @@ from model import get_model_and_optim
 from loss import loss_by_task, metric_by_task, weight_by_task
 
 
+
 def train_FULL(args: argparse.Namespace, basedir: str):
     data = prepare_data(args)
     train_mask, test_mask = train_test_split(
         data, train_frac=args.TRAIN_FRAC, seed=args.SEED
     )
-
     model, optimizer = get_model_and_optim(data, args)
     weights = weight_by_task(data.output_map, args)
     bar = tqdm.trange(args.EPOCHS)
@@ -23,7 +23,7 @@ def train_FULL(args: argparse.Namespace, basedir: str):
         optimizer.zero_grad()
         out = model(data.X)
         train_loss = loss_by_task(
-            out[train_mask], data.y[train_mask], data.output_map, args
+            model, data.X[train_mask], data.y[train_mask], data.output_map, args
         )
         loss = (weights * train_loss).mean()
         loss.backward()
@@ -59,5 +59,6 @@ def train_FULL(args: argparse.Namespace, basedir: str):
                   print(msg)
                 # save model
                 torch.save(model.state_dict(), os.path.join(basedir, f"model_{epoch}.pt"))
+                torch.save(model, os.path.join(basedir, "model_full.pt"))
 
     torch.save(model, os.path.join(basedir, "model_full.pt"))

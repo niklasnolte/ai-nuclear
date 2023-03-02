@@ -244,3 +244,8 @@ def train_test_split(data, train_frac, seed=1):
     train_mask = torch.rand(data.X.shape[0]) < train_frac
     test_mask = ~train_mask
     return train_mask.to(device), test_mask.to(device)
+
+
+if __name__ == '__main__':
+    x = prepare_data(['abundance'])
+    print(x)

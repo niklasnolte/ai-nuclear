@@ -4,6 +4,14 @@ from sklearn.preprocessing import QuantileTransformer
 import argparse
 import math
 
+def get_index(hidden_dim, pca_alpha):
+    #picks an index to do stochastic loss
+    indices = torch.tensor(range(1,hidden_dim+1))
+    base = torch.tensor([ind**pca_alpha for ind in range(1,hidden_dim +1)])
+    base = base/base.sum()
+    sample = torch.multinomial(base, 1, replacement=True)
+    return indices[sample]
+
 def weight_by_task(output_map: dict, config: argparse.Namespace) -> torch.Tensor:
     weights = []
     for target_name in output_map.keys():
@@ -16,7 +24,8 @@ def weight_by_task(output_map: dict, config: argparse.Namespace) -> torch.Tensor
 
 
 def loss_by_task(
-    output: torch.Tensor, targets: torch.Tensor, output_map: dict, config: argparse.Namespace
+    model: torch.nn.Module,
+    input: torch.Tensor, targets: torch.Tensor, output_map: dict, config: argparse.Namespace
 ) -> torch.Tensor:
     """
     output: [batch_size, output_dim]
@@ -29,24 +38,37 @@ def loss_by_task(
 
     returns loss: [targets_dim]
     """
-    # WARNING: classification comes first
-    target_names = list(output_map.keys())
-    # reshape output according to output_map and return tuple by regression and classification
-    output_column = 0
-    loss = torch.zeros(len(target_names))
-    for target_column, target_name in enumerate(target_names):
-        mask = ~torch.isnan(targets[:, target_column])
-        masked_target = targets[:, target_column][mask]
-        if target_name in config.TARGETS_CLASSIFICATION:
-            size = output_map[target_name]
-            out = output[:, output_column : output_column + size]
-            loss[target_column] = F.cross_entropy(out[mask], masked_target.long())
-            output_column += size
-        else:
-            out = output[:, output_column]
-            loss[target_column] = F.mse_loss(out[mask], masked_target.float())
-            output_column += 1
+    def get_loss(output):
+        # WARNING: classification comes first
+        target_names = list(output_map.keys())
+        # reshape output according to output_map and return tuple by regression and classification
+        output_column = 0
+        loss = torch.zeros(len(target_names))
+        for target_column, target_name in enumerate(target_names):
+            mask = ~torch.isnan(targets[:, target_column])
+            masked_target = targets[:, target_column][mask]
+            if target_name in config.TARGETS_CLASSIFICATION:
+                size = output_map[target_name]
+                out = output[:, output_column : output_column + size]
+                loss[target_column] = F.cross_entropy(out[mask], masked_target.long())
+                output_column += size
+            else:
+                out = output[:, output_column]
+                loss[target_column] = F.mse_loss(out[mask], masked_target.float())
+                output_column += 1
+        return loss
+    normal_output = model.forward(input)
+    normal_loss = get_loss(normal_output)
+    stochastic_loss = 0
+    if config.DIMNREG:
+        hidden_dim = config.HIDDEN_DIM
+        pca_index = get_index(hidden_dim, config.PCA_ALPHA)
+        stochastic_output = model.forward_ndim(input, pca_index)
+        stochastic_loss = get_loss(stochastic_output)
+    loss = (normal_loss + config.DIMNREG*stochastic_loss)/(config.DIMNREG + 1)
     return loss
+
+
 
 def get_balanced_accuracy(output:torch.Tensor, target:torch.Tensor):
     """

@@ -15,16 +15,18 @@ def get_slurm_extra():
     return "--mem=5G"
 
 class Locations:
-  FULL = os.path.join(config.SN_ROOT, config_utils.get_name(config.Task.FULL))
+  FULL = os.path.join(config.ROOT, config_utils.get_name(config.Task.FULL))
+  FULL_model = os.path.join(FULL, "model_full.pt")
 
 rule all:
   input:
-    expand(Locations.FULL,
+    expand(Locations.FULL_model,
             **config.Task.FULL.value)
 
 rule train_FULL:
   output:
-    cps = directory(Locations.FULL)
+    cps = directory(Locations.FULL),
+    model = Locations.FULL_model
   resources:
     slurm_extra=get_slurm_extra()
   run:

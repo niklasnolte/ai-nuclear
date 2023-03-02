@@ -1,3 +1,6 @@
 models
 __pycache__
 data
+.snakemake
+wandb
+.vscode

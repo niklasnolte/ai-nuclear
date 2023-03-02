@@ -8,7 +8,7 @@ def get_slurm_extra():
   if config.SN_GPU:
     return " ".join([
       "--gres=gpu:1",
-      "--partition=submit-gpu1080",
+      "--partition=submit-gpu1080,submit-gpu",
       "--mem=5G",
     ])
   else:

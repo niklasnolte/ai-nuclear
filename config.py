@@ -17,7 +17,7 @@ class Task(Enum):
             LR=[1e-1, 5e-2, 1e-2],
             EPOCHS=[30000],
             TRAIN_FRAC=[0.8],
-            HIDDEN_DIM=[256, 128],
+            HIDDEN_DIM=[256, 512],
             SEED=[0, 1, 2],
             MODEL=["baseline"],
             TARGETS_CLASSIFICATION=[

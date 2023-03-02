@@ -5,7 +5,7 @@ import numpy
 import snakemake
 
 def get_slurm_extra():
-  if config.SN_GPU:
+  if config.SM_GPU:
     return " ".join([
       "--gres=gpu:1",
       "--partition=submit-gpu1080,submit-gpu",
@@ -15,7 +15,7 @@ def get_slurm_extra():
     return "--mem=5G"
 
 class Locations:
-  FULL = os.path.join(config.ROOT, config_utils.get_name(config.Task.FULL))
+  FULL = os.path.join(config.SM_ROOT, config_utils.get_name(config.Task.FULL))
   FULL_model = os.path.join(FULL, "model_full.pt")
 
 rule all:

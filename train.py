@@ -1,7 +1,7 @@
 import torch
 import os
 import wandb
-from config import ROOT, Task
+from config import Task
 from config_utils import parse_arguments_and_get_name
 from train_full import train_FULL
 
@@ -12,7 +12,7 @@ args, name = parse_arguments_and_get_name(TASK)
 torch.manual_seed(args.SEED)
 
 # paths and names
-basedir = os.path.join(ROOT, name)
+basedir = os.path.join(args.ROOT, name)
 os.makedirs(basedir, exist_ok=True)
 print(f"training run for {name}")
 

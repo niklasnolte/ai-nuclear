@@ -1,10 +1,11 @@
 from enum import Enum
 from config_utils import serialize_elements_in_task
 
-ROOT = "/data/submit/nnolte/AI-NUCLEAR-LOGS"
-WANDB = True
-SLURM = True
-GPU = True
+#snakemake configs (only apply if running with snakemake)
+SM_ROOT = "/data/submit/nnolte/AI-NUCLEAR-LOGS"
+SM_WANDB = False
+SM_SLURM = True
+SM_GPU = True
 
 
 class Task(Enum):
@@ -12,7 +13,7 @@ class Task(Enum):
     # otherwise enum is a bitch
     FULL = serialize_elements_in_task(
         dict(
-            WD=[1e-2, 3e-3, 1e-3],
+            WD=[3e-3, 1e-2, 1e-3], # first one seems to be best
             LR=[1e-1, 5e-2, 1e-2],
             EPOCHS=[30000],
             TRAIN_FRAC=[0.8],
@@ -82,8 +83,9 @@ def train_cmd(
         [
             f"TASK={task.name}",
             f"python train.py",
-            f"--WANDB" if WANDB else "",
+            f"--WANDB" if SM_WANDB else "",
         ]  # or not
         + [f"--{k} {v}" for k, v in hyperparams.items()]
-        + [f"--DEV cuda" if GPU else "--DEV cpu"]
+        + [f"--DEV cuda" if SM_GPU else "--DEV cpu"]
+        + [f"--ROOT {SM_ROOT}"]
     )

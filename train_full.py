@@ -3,7 +3,6 @@ import tqdm
 import torch
 import argparse
 import wandb
-import config
 from data import prepare_data, train_test_split
 from model import get_model_and_optim
 from loss import loss_by_task, metric_by_task, weight_by_task
@@ -41,7 +40,7 @@ def train_FULL(args: argparse.Namespace, basedir: str):
                     qt=data.regression_transformer,
                 )
                 # save to wandb
-                if config.WANDB:
+                if args.WANDB:
                     for i, target in enumerate(data.output_map.keys()):
                         wandb.log(
                             {

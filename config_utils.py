@@ -46,6 +46,7 @@ def _parse_arguments(task):
     # operations params
     parser.add_argument("--DEV", type=str, default="cpu")
     parser.add_argument("--WANDB", action="store_true", default=False)
+    parser.add_argument("--ROOT", type=str, default="./results")
     return parser.parse_args()
 
 

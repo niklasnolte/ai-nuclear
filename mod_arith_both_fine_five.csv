@@ -1,0 +1,6 @@
+,title,seed,test_size,epochs,test_acc,train_acc
+0,BasicModelSmall_256dim_0.65ts_1seed_both,1,0.65,19999,1.0,1.0
+1,BasicModelSmall_256dim_0.65ts_2seed_both,2,0.65,19999,0.9946207404136658,0.9999999403953552
+2,BasicModelSmall_256dim_0.65ts_3seed_both,3,0.65,19999,0.9964578151702881,1.0
+3,BasicModelSmall_256dim_0.65ts_4seed_both,4,0.65,19999,0.9946808815002441,1.0
+4,BasicModelSmall_256dim_0.65ts_5seed_both,5,0.65,19999,0.9807183742523193,1.0

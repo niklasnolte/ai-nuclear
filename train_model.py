@@ -43,7 +43,7 @@ def train(modelclass, lr, wd, embed_dim, basepath, device, title, heavy_elem = 1
     lr = lr/(1+reg_pca)
   torch.manual_seed(seed)
   os.makedirs(basepath, exist_ok=True)
-  X_train, X_test, y_train, y_test, vocab_size = get_data(heavy_elem = heavy_elem) 
+  X_train, X_test, y_train, y_test, vocab_size, y_mean, y_std = get_data(heavy_elem = heavy_elem, return_ymean_ystd=True) 
 
   X_train = X_train.to(device)
   X_test = X_test.to(device)
@@ -106,8 +106,8 @@ def train(modelclass, lr, wd, embed_dim, basepath, device, title, heavy_elem = 1
       #mw.step()
     with torch.no_grad():
 
-      y_pred = mw.forward(X_test)
-      loss = loss_fn(y_pred, y_test)
+      y_pred = mw.forward(X_test)*y_std+y_mean
+      loss = loss_fn(y_pred, y_test*y_std+y_mean).sqrt()
       train_loss = loss_fn(mw.forward(X_train), y_train)
 
       if loss < lowest_loss:

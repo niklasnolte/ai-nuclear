@@ -338,18 +338,19 @@ class BasicLinear(nn.Module):
 
 if __name__ == '__main__':
   dir = 'pcareg_heavy15'
-  for regpca in [2e-4, 2e-3, 2e-2, 2e-1, 2e0, 5e0]:
-    title = f'BasicModelSmall_regpca{regpca}_embed256_dimn'
-    train(modelclass=BasicModelSmall, 
+  for regpca in [0]:
+    title = f'BasicModelSmall_regpca{regpca}_embed64_dimn'
+    train(modelclass=BasicModel, 
                     lr=(2e-3)/4, 
                     wd=1e-4, 
-                    embed_dim=256, 
+                    embed_dim=64, 
                     basepath=f"models/{dir}/{title}/", 
                     device=torch.device("cuda"),
                     title = title,
                     reg_pca = regpca, 
                     reg_type = 'dimn'
                     )
+  '''
   title = 'BasicModelSmallerDropout_regpca0_dimn'
   train(modelclass=BasicModelSmall, 
                     lr=(2e-3)/4, 
@@ -361,7 +362,7 @@ if __name__ == '__main__':
                     reg_pca = 0, 
                     reg_type = 'dimn'
                     )            
-  '''
+  
   
   regtypes = ['dimn', 'dimall', 'oldeff', 'dim3'][:1]
 

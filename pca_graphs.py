@@ -9,7 +9,7 @@ from sklearn.decomposition import PCA
 from copy import deepcopy
 import matplotlib.colors as mcolors
 from moviepy.video.io.bindings import mplfig_to_npimage
-from BasicModelSmall_only import BasicModelSmall
+from BasicModelSmallOnly import BasicModelSmallOnly
 
 
 

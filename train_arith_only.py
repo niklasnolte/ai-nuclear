@@ -9,25 +9,25 @@ import pandas as pd
 from sklearn.model_selection import train_test_split
 import matplotlib.pyplot as plt
 import urllib.request
-limit = 53
+LIMIT = 53
 
 def get_data(test_size = 0.2, seed = 42):
     Xs = []
     ys = []
-    for a in range(limit):
-        for b in range(limit):
+    for a in range(LIMIT):
+        for b in range(LIMIT):
             x = [a,b]
-            y = (a+b)%limit
+            y = (a+b)%LIMIT
             Xs.append(x)
             ys.append(y)
     Xs, ys = torch.tensor(Xs).int(), torch.tensor(ys).long()
     test_size = test_size
     X_train, X_test, y_train, y_test = train_test_split(Xs, ys, test_size=test_size, random_state=seed)
-    vocab_size = (limit, limit) 
+    vocab_size = (LIMIT, LIMIT) 
     return X_train, X_test, y_train, y_test, vocab_size
 
 
-def train(modelclass, lr, wd, embed_dim, basepath, device, title, reg_pca = 0, seed = 1, test_size = 0.2):
+def train(modelclass, lr, wd, embed_dim, basepath, device, title,seed = 1, test_size = 0.2):
   #train just for modular arithmetic. gets rid of norm and assums regtype is always simn
   torch.manual_seed(seed)
   os.makedirs(basepath, exist_ok=True)
@@ -45,33 +45,26 @@ def train(modelclass, lr, wd, embed_dim, basepath, device, title, reg_pca = 0, s
   train_loader = DataLoader(TensorDataset(X_train, y_train), batch_size=len(X_train), shuffle=True)
   model = modelclass(*vocab_size, embed_dim).to(device)
 
-  loss_fn = nn.CrossEntropyLoss()#nn.MSELoss()
-  early_optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=wd)
-  late_optimizer = torch.optim.SGD(model.parameters(), lr=lr, weight_decay=wd)
+  loss_fn = nn.CrossEntropyLoss()
+  optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=wd)
 
-  bar = tqdm.tqdm(range(int(1e4)))
+  bar = tqdm.tqdm(range(int(2e4)))
   lowest_loss = 1e10
 
   loss_list = []
-  entropy_a_list = []
-  entropy_b_list = []
+  entropy_list = []
   iterations = []
   train_loss_list = []
 
   torch.autograd.set_detect_anomaly(True)
   for i in bar:
 
-    optimizer = early_optimizer# if i < len(bar)//2 else late_optimizer
-    train_acc = 0
     for X_batch, y_batch in train_loader:
 
       optimizer.zero_grad()
       y_pred = model(X_batch).to(device)
       train_acc = (y_pred.argmax(dim=1) == y_batch).float().mean()
       loss = loss_fn(y_pred, y_batch)
-      if reg_pca:
-        regloss = model.stochastic_pca_loss(loss_fn, X_train, y_train)
-        loss += reg_pca * regloss
       loss.backward()
       optimizer.step()
 
@@ -91,46 +84,36 @@ def train(modelclass, lr, wd, embed_dim, basepath, device, title, reg_pca = 0, s
         iterations.append(i)
         loss_list.append(loss.cpu().numpy())
 
-        a_entropy, b_entropy = effective_dim(model, all_a, all_b)
-        a_entropy = a_entropy.cpu().numpy()
-        b_entropy = b_entropy.cpu().numpy()
-        entropy_a_list.append(a_entropy)
-        entropy_b_list.append(b_entropy)
+        entropy = effective_dim(model, all_a)
+        entropy = entropy.cpu().numpy()
+        entropy_list.append(entropy)
         train_loss_list.append(train_loss.cpu().numpy())
 
         data_dict = {'Iteration':iterations, 'Loss':loss_list,'Train_Loss':train_loss_list, 
-             'a_entropy':entropy_a_list, 'b_entropy':entropy_b_list}
+             'entropy':entropy}
         df = pd.DataFrame(data_dict)
         df.to_csv('csv/{0}.csv'.format(title))
 
       torch.save(model.state_dict(), basepath + f"latest.pt")
       test_acc = (y_test == y_pred.argmax(dim=1)).float().mean()
-      bar.set_postfix(loss=loss.item(), train_acc = train_acc.item(), test_accuracy = test_acc.item(), train_loss=train_loss.item(), a_ent=a_entropy, b_ent=b_entropy)
-      if test_acc.item() > 1-10**-6:
+      bar.set_postfix(loss=loss.item(), train_acc = train_acc.item(), test_accuracy = test_acc.item(), train_loss=train_loss.item(), ent = entropy)
+      if test_acc.item() > 1-10**-4:
+         torch.save(best_state_dict, basepath + "best.pt")
+         torch.save(model.cpu().requires_grad_(False), os.path.join(basepath, "model.pt"))
          return test_acc.item(), train_acc.item(), i
   torch.save(best_state_dict, basepath + "best.pt")
   torch.save(model.cpu().requires_grad_(False), os.path.join(basepath, "model.pt"))
   return test_acc.item(), train_acc.item(), i
 
 
-def effective_dim(model, all_a, all_b):
+def effective_dim(model, all_a):
   #calculate entropy of the embeddings
   a = model.emb_a(all_a)
-  b = model.emb_a(all_b)
-
   a_S = (torch.square(torch.svd(a)[1]) / (all_a.shape[0] - 1))
-  b_S = (torch.square(torch.svd(b)[1]) / (all_b.shape[0] - 1))
-  
   a_prob = a_S/a_S.sum()
-  b_prob = b_S/b_S.sum()
-  
   entropy_a = -(a_prob * torch.log(a_prob)).sum()
-  entropy_b = -(b_prob * torch.log(b_prob)).sum()
-
-  a_e = torch.exp(entropy_a)
-  b_e = torch.exp(entropy_b)
-
-  return a_e, b_e
+  entropy = torch.exp(entropy_a)
+  return entropy
 
 
 

@@ -1,10 +1,10 @@
 from enum import Enum
 from config_utils import serialize_elements_in_task
 
-ROOT = "results"
+ROOT = "/data/submit/nnolte/AI-NUCLEAR-LOGS"
 WANDB = True
 SLURM = True
-GPU = False
+GPU = True
 
 
 class Task(Enum):

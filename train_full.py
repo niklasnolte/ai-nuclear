@@ -42,23 +42,23 @@ def train_FULL(args: argparse.Namespace, basedir: str):
                 )
                 # save to wandb
                 if config.WANDB:
-                    wandb.log({"epoch": epoch})
                     for i, target in enumerate(data.output_map.keys()):
                         wandb.log(
                             {
                                 f"train_{target}": train_loss[i].item(),
                                 f"val_{target}": val_loss[i].item(),
-                            }
+                            },
+                            step=epoch
                         )
-
-                msg = f"\nEpoch {epoch} Train losses:\n"
-                for i, target in enumerate(data.output_map.keys()):
-                    msg += f"{target}: {train_loss[i].item():.2e}\n"
-                msg += f"\nEpoch {epoch} Val metrics:\n"
-                for i, target in enumerate(data.output_map.keys()):
-                    msg += f"{target}: {val_loss[i].item():.4f}\n"
-            print(msg)
-            # save model
-            torch.save(model.state_dict(), os.path.join(basedir, f"model_{epoch}.pt"))
+                else:
+                  msg = f"\nEpoch {epoch} Train losses:\n"
+                  for i, target in enumerate(data.output_map.keys()):
+                      msg += f"{target}: {train_loss[i].item():.2e}\n"
+                  msg += f"\nEpoch {epoch} Val metrics:\n"
+                  for i, target in enumerate(data.output_map.keys()):
+                      msg += f"{target}: {val_loss[i].item():.4f}\n"
+                  print(msg)
+                # save model
+                torch.save(model.state_dict(), os.path.join(basedir, f"model_{epoch}.pt"))
 
     torch.save(model, os.path.join(basedir, "model_full.pt"))

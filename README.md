@@ -3,7 +3,7 @@ There are 3 ways to run this pipeline, depending on how many jobs you want to ru
 ## Single run
 A single run (interactively) to test a single configuration.
 All configuration lives in `config.py`.
-To run, choose as task from the Task enum in `config.py`, for instance `FULL`.
+To run, choose as task from the Task enum in `config.py`, for instance `FULL`. (At the moment of writing this `FULL` is the only option available).
 Then you can run a default run with `TASK=FULL python train.py`.
 
 The configurable parameters are defined in the tasks dict (again in `config.py`).
@@ -28,11 +28,15 @@ So if your Task.FULL looked like
         "EPOCHS": [10, 20],
     }
 ```
-then snakemake will run 8 jobs, each with a different combination of the parameters.
+then snakemake will run $2^3=8$ jobs, each with a different combination of the parameters.
 The top of config.py has a couple of configurable options for snakemake, like `SN_GPU` and `SN_ROOT`.
 Change those as you wish.
 Then you can run `snakemake -c4` to run 4 jobs in parallel and get through all the tasks.
 The results will be saved in `SN_ROOT/<a_long_name_with_the_config>/model...pt`.
+
+Note: You may need to set the environment variable `MKL_SERVICE_FORCE_INTEL` to 1 to avoid crashing. We're working
+fixing this bug. For now you can run your snakemake commands with the variable set as follows
+`MKL_SERVICE_FORCE_INTEL=1 snakemake -c4`  
 
 ## Slurm
 Snakemake can run with slurm, you need to set only a few things:

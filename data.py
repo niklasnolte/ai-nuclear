@@ -176,6 +176,8 @@ def get_data(recreate=False):
         )
         return pd.read_csv(urllib.request.urlopen(req))
 
+    if not os.path.exists("data"):
+        os.mkdir("data")
     if recreate or not os.path.exists("data/ground_states.csv"):
         df = lc_read_csv("fields=ground_states&nuclides=all")
         df.to_csv("data/ground_states.csv", index=False)

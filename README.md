@@ -17,7 +17,7 @@ You can change the output directory by providing `--ROOT path`.
 
 You can activate WANDB with `--WANDB`.
 
-## Snakemake local
+## SnakeMake local
 First, install snakemake (`pip install snakemake`). Snakemake is a job scheduler it is set up
 here to run all the different combinations of all the configuration parameter lists.
 So if your Task.FULL looked like

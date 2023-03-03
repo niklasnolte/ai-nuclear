@@ -18,8 +18,7 @@ print(f"training run for {name}")
 
 # bookkeeping
 if args.WANDB:
-    wandb.init(project=f"AI-NUCLEAR", entity="iaifi", name=name)
-    wandb.config = vars(args)
+    wandb.init(project=f"ai-nuclear", entity="iaifi", name=name, notes="testing 1024 width", tags=["testing"], config=vars(args))
     wandb.save("train.py")
     wandb.save("train_full.py")
     wandb.save("config.py")

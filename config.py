@@ -14,7 +14,7 @@ class Task(Enum):
     FULL = serialize_elements_in_task(
         dict(
             WD=[3e-3, 1e-2, 1e-3], # first one seems to be best
-            LR=[1e-1, 5e-2, 1e-2],
+            LR=[1e-1, 2e-1, 8e-2],
             EPOCHS=[100000],
             TRAIN_FRAC=[0.8],
             HIDDEN_DIM=[512, 1024],
@@ -25,10 +25,10 @@ class Task(Enum):
             ],
             TARGETS_REGRESSION=[
                 {
-                    "z": 1,
-                    "n": 1,
-                    "binding_energy": 1,
-                    "radius": 1,
+                    "z": 2,
+                    "n": 2,
+                    "binding_energy": 2,
+                    "radius": 2,
                     "half_life_sec": 1,
                     "abundance": 1,
                     "qa": 1,

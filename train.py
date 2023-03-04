@@ -36,7 +36,5 @@ for f in os.listdir(basedir):
 
 if TASK == Task.FULL:
     train_FULL(args, basedir)
-    pass
-elif TASK == Task.BASELINE:
-    # train_MNIST(args, device, basedir)
-    pass
+else:
+    train_FULL(args, basedir, debug=True)

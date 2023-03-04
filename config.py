@@ -3,12 +3,14 @@ from config_utils import serialize_elements_in_task
 import os
 
 #snakemake configs (only apply if running with snakemake)
-user = os.environ.get("USER")
-host = os.environ.get("HOSTNAME")
-if host.endswith("harvard.edu"):
-    SM_ROOT = f"~/data/AI-NUCLEAR-LOGS"
-elif host.endswith("mit.edu"):
+user = os.environ["USER"]
+host = os.environ["HOSTNAME"] 
+if host.endswith("mit.edu") or host.startswith("submit"):
     SM_ROOT = f"/data/submit/{user}/AI-NUCLEAR-LOGS"
+elif host.endswith("harvard.edu") or host.startswith("holygpu"):
+    SM_ROOT = os.path.expanduser("~/data/AI-NUCLEAR-LOGS")
+else:
+    raise ValueError(f"Unknown host {host}. Please add it to config.py.")
 SM_WANDB = False
 SM_SLURM = True
 SM_GPU = True
@@ -16,7 +18,7 @@ SM_GPU = True
 
 class Task(Enum):
     # make sure that the tasks don't have exactly the same config
-    # otherwise enum is a bitch
+    # otherwise enum is a poopy head
     FULL = serialize_elements_in_task(
         dict(
             WD=[3e-3, 1e-2, 1e-3], # first one seems to be best

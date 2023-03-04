@@ -16,7 +16,10 @@ def train_FULL(args: argparse.Namespace, basedir: str):
 
     model, optimizer = get_model_and_optim(data, args)
     weights = weight_by_task(data.output_map, args)
-    bar = tqdm.trange(args.EPOCHS)
+    if not args.WANDB:
+      bar = tqdm.trange(args.EPOCHS)
+    else:
+      bar = range(args.EPOCHS)
     for epoch in bar:
         # Train
         model.train()
@@ -28,7 +31,7 @@ def train_FULL(args: argparse.Namespace, basedir: str):
         loss = (weights * train_loss).mean()
         loss.backward()
         optimizer.step()
-        if epoch % 100 == 0:
+        if epoch % args.LOG_FREQ == 0:
             with torch.no_grad():
                 # Test
                 model.eval()

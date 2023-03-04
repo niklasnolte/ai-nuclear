@@ -30,8 +30,13 @@ def serialize_elements_in_task(task: dict):
 
 
 def _args_postprocessing(args: argparse.Namespace):
+    # make them dicts again
     args.TARGETS_CLASSIFICATION = _deserialize_dict(args.TARGETS_CLASSIFICATION)
     args.TARGETS_REGRESSION = _deserialize_dict(args.TARGETS_REGRESSION)
+
+    # log freq
+    if args.LOG_FREQ is None:
+        args.LOG_FREQ = args.EPOCHS // 100
     return args
 
 
@@ -44,9 +49,10 @@ def _parse_arguments(task):
         )  # TODO review float
 
     # operations params
-    parser.add_argument("--DEV", type=str, default="cpu")
-    parser.add_argument("--WANDB", action="store_true", default=False)
-    parser.add_argument("--ROOT", type=str, default="./results")
+    parser.add_argument("--DEV", type=str, default="cpu", help="device to use")
+    parser.add_argument("--WANDB", action="store_true", default=False, help="use wandb or not")
+    parser.add_argument("--ROOT", type=str, default="./results", help="root folder to store models")
+    parser.add_argument("--LOG_FREQ", type=int, default=None, help="log every n epochs, None == 100 times total")
     return parser.parse_args()
 
 

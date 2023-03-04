@@ -1,20 +1,5 @@
 from enum import Enum
 from config_utils import serialize_elements_in_task
-import os
-
-#snakemake configs (only apply if running with snakemake)
-user = os.environ["USER"]
-host = os.environ["HOSTNAME"] 
-if host.endswith("mit.edu") or host.startswith("submit"):
-    SM_ROOT = f"/data/submit/{user}/AI-NUCLEAR-LOGS"
-elif host.endswith("harvard.edu") or host.startswith("holygpu"):
-    SM_ROOT = os.path.expanduser("~/data/AI-NUCLEAR-LOGS")
-else:
-    raise ValueError(f"Unknown host {host}. Please add it to config.py.")
-SM_WANDB = False
-SM_SLURM = True
-SM_GPU = True
-
 
 class Task(Enum):
     # make sure that the tasks don't have exactly the same config
@@ -79,21 +64,4 @@ class Task(Enum):
                 },
             ],
         )
-    )
-
-
-
-def train_cmd(
-    task: Task,
-    hyperparams={},  # filled by snakemake wildcards
-):
-    return " ".join(
-        [
-            f"TASK={task.name}",
-            f"python train.py",
-            f"--WANDB" if SM_WANDB else "",
-        ]  # or not
-        + [f"--{k} {v}" for k, v in hyperparams.items()]
-        + [f"--DEV cuda" if SM_GPU else "--DEV cpu"]
-        + [f"--ROOT {SM_ROOT}"]
     )

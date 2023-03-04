@@ -1,7 +1,6 @@
 from collections.abc import Iterable
 import argparse
 
-
 def _serialize_dict(targets: dict) -> str:
     if targets == {}:
       return "None"

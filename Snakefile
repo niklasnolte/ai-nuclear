@@ -1,34 +1,15 @@
 import os
 import config_utils
 import config
+import run_config
 import numpy
 import snakemake
 
-def get_partitions():
-  # hostname
-  host = os.environ["HOSTNAME"]
-  if host.endswith("mit.edu") or host.startswith("submit"):
-    return "submit-gpu1080,submit-gpu"
-  elif host.endswith("harvard.edu") or host.startswith("holygpu"):
-    return "iaifi_gpu"
-  else:
-    raise Exception("Auto-host Unknown host: " + host + ". Please set host manually.")
-
-def get_slurm_extra():
-  if config.SM_GPU:
-    return " ".join([
-      "--gres=gpu:1",
-      f"--partition={get_partitions()}",
-      "--mem=5G",
-      "--time=1:00:00"
-    ])
-  else:
-    return "--mem=5G"
 
 class Locations:
-  FULL = os.path.join(config.SM_ROOT, config_utils.get_name(config.Task.FULL))
+  FULL = os.path.join(run_config.SM_ROOT, config_utils.get_name(config.Task.FULL))
   FULL_model = os.path.join(FULL, f"model_FULL.pt")
-  DEBUG = os.path.join(config.SM_ROOT, config_utils.get_name(config.Task.DEBUG))
+  DEBUG = os.path.join(run_config.SM_ROOT, config_utils.get_name(config.Task.DEBUG))
   DEBUG_model = os.path.join(DEBUG, f"model_debug.pt")
 
 rule debug:
@@ -47,11 +28,11 @@ rule train_FULL:
     cps = directory(Locations.FULL),
     model = Locations.FULL_model
   resources:
-    slurm_extra=get_slurm_extra(),
+    slurm_extra=run_config.get_slurm_extra_resources(),
     runtime="1h"
   run:
     shell(f"mkdir -p {output.cps}")
-    cmd = config.train_cmd(config.Task.FULL, wildcards)
+    cmd = run_config.train_cmd(config.Task.FULL, wildcards)
     shell(cmd)
 
 rule train_DEBUG:
@@ -59,9 +40,9 @@ rule train_DEBUG:
     cps = directory(Locations.DEBUG),
     model = Locations.DEBUG_model
   resources:
-    slurm_extra=get_slurm_extra(),
+    slurm_extra=run_config.get_slurm_extra_resources(),
     runtime="5m"
   run:
     shell(f"mkdir -p {output.cps}")
-    cmd = config.train_cmd(config.Task.DEBUG, wildcards)
+    cmd = run_config.train_cmd(config.Task.DEBUG, wildcards)
     shell(cmd)

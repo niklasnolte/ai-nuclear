@@ -1,9 +1,15 @@
 from enum import Enum
 from config_utils import serialize_elements_in_task
+import os
 
 #snakemake configs (only apply if running with snakemake)
-SM_ROOT = "/data/submit/nnolte/AI-NUCLEAR-LOGS"
-SM_WANDB = True
+user = os.environ.get("USER")
+host = os.environ.get("HOSTNAME")
+if host.endswith("harvard.edu"):
+    SM_ROOT = f"~/data/AI-NUCLEAR-LOGS"
+elif host.endswith("mit.edu"):
+    SM_ROOT = f"/data/submit/{user}/AI-NUCLEAR-LOGS"
+SM_WANDB = False
 SM_SLURM = True
 SM_GPU = True
 
@@ -42,7 +48,37 @@ class Task(Enum):
         )
     )
 
-    BASELINE = dict()
+    DEBUG = serialize_elements_in_task(
+        dict(
+            WD=[1e-3], # first one seems to be best
+            LR=[1e-2],
+            EPOCHS=[1],
+            TRAIN_FRAC=[0.8],
+            HIDDEN_DIM=[32],
+            SEED=[0],
+            MODEL=["baseline"],
+            TARGETS_CLASSIFICATION=[
+                {"stability": 1, "parity": 1, "spin": 1, "isospin": 1},
+            ],
+            TARGETS_REGRESSION=[
+                {
+                    "z": 1,
+                    "n": 1,
+                    "binding_energy": 1,
+                    "radius": 1,
+                    "half_life_sec": 1,
+                    "abundance": 1,
+                    "qa": 1,
+                    "qbm": 1,
+                    "qbm_n": 1,
+                    "qec": 1,
+                    "sn": 1,
+                    "sp": 1,
+                },
+            ],
+        )
+    )
+
 
 
 def train_cmd(

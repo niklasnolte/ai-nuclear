@@ -16,9 +16,9 @@ Clusters = dict(
 # snakemake configs (only apply if running with snakemake)
 # can be changed at ones leisure
 SM_ROOT = Clusters[where_am_i()]["root"]
-SM_WANDB = False
+SM_WANDB = True
 SM_SLURM = True
-SM_GPU = False
+SM_GPU = True
 SM_LOG_FREQ = -1 # 100 times total
 
 def train_cmd(

@@ -5,7 +5,7 @@ import os
 Clusters = dict(
     MIT = {
         "partition": "submit-gpu1080,submit-gpu",
-        "root": f"/data/submit/{os.getlogin()}/AI-NUCLEAR-LOGS",
+        "root": f"/data/submit/{os.environ['USER']}/AI-NUCLEAR-LOGS",
     },
     HARVARD = {
         "partition": "iaifi_gpu",

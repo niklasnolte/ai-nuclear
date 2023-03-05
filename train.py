@@ -34,7 +34,5 @@ for f in os.listdir(basedir):
         os.remove(os.path.join(basedir, f))
 
 
-if TASK == Task.FULL:
+if TASK == Task.FULL or TASK == Task.DEBUG:
     train_FULL(args, basedir)
-else:
-    train_FULL(args, basedir, debug=True)

@@ -8,8 +8,7 @@ from model import get_model_and_optim
 from loss import loss_by_task, metric_by_task, weight_by_task
 
 
-def train_FULL(args: argparse.Namespace, basedir: str, debug: bool = False):
-    if debug: print("DEBUG MODE")
+def train_FULL(args: argparse.Namespace, basedir: str):
     data = prepare_data(args)
     train_mask, test_mask = train_test_split(
         data, train_frac=args.TRAIN_FRAC, seed=args.SEED
@@ -63,11 +62,4 @@ def train_FULL(args: argparse.Namespace, basedir: str, debug: bool = False):
                   print(msg)
                 # save model
                 torch.save(model.state_dict(), os.path.join(basedir, f"model_{epoch}.pt"))
-    if debug: # TODO maybe debug should have its own train rule
-        torch.save(model, os.path.join(basedir, "model_debug.pt"))
-        print("DEBUG MODE: saving model_debug.pt")
-        print("SAVED MODEL: ", os.path.join(basedir, "model_debug.pt"))
-    else:
-        print("wrong branch")
-        breakpoint()
-        torch.save(model, os.path.join(basedir, "model_full.pt"))
+    torch.save(model, os.path.join(basedir, "model_FULL.pt"))

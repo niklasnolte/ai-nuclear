@@ -1,5 +1,16 @@
 from collections.abc import Iterable
 import argparse
+import socket
+
+def where_am_i():
+    host = socket.gethostname()
+
+    if host.endswith("mit.edu") or host.startswith("submit"):
+        return "MIT"
+    elif host.endswith("harvard.edu") or host.startswith("holygpu"):
+        return "HARVARD"
+    else:
+        raise ValueError(f"Unknown cluster: {host}")
 
 def _serialize_dict(targets: dict) -> str:
     if targets == {}:
@@ -34,8 +45,11 @@ def _args_postprocessing(args: argparse.Namespace):
     args.TARGETS_REGRESSION = _deserialize_dict(args.TARGETS_REGRESSION)
 
     # log freq
-    if args.LOG_FREQ is None:
-        args.LOG_FREQ = args.EPOCHS // 100
+    if args.LOG_FREQ == -1:
+        if args.EPOCHS > 100:
+            args.LOG_FREQ = args.EPOCHS // 100
+        else:
+            args.LOG_FREQ = 1
     return args
 
 
@@ -51,7 +65,7 @@ def _parse_arguments(task):
     parser.add_argument("--DEV", type=str, default="cpu", help="device to use")
     parser.add_argument("--WANDB", action="store_true", default=False, help="use wandb or not")
     parser.add_argument("--ROOT", type=str, default="./results", help="root folder to store models")
-    parser.add_argument("--LOG_FREQ", type=int, default=None, help="log every n epochs, None == 100 times total")
+    parser.add_argument("--LOG_FREQ", type=int, default=-1, help="log every n epochs, -1 == (up to) 100 times total")
     return parser.parse_args()
 
 
@@ -83,4 +97,3 @@ def parse_arguments_and_get_name(task):
     name = _get_qualified_name(task, args)
     args = _args_postprocessing(args)
     return args, name
-

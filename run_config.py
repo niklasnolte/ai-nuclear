@@ -1,12 +1,25 @@
 from config import Task
-from run_config_utils import determine_cluster
+from config_utils import where_am_i
+import os
+
+Clusters = dict(
+    MIT = {
+        "partition": "submit-gpu1080,submit-gpu",
+        "root": f"/data/submit/{os.getlogin()}/AI-NUCLEAR-LOGS",
+    },
+    HARVARD = {
+        "partition": "iaifi_gpu",
+        "root": "~/data/AI-NUCLEAR-LOGS",
+    }
+)
 
 # snakemake configs (only apply if running with snakemake)
 # can be changed at ones leisure
-SM_ROOT = determine_cluster().value["root"]
+SM_ROOT = Clusters[where_am_i()]["root"]
 SM_WANDB = False
 SM_SLURM = True
-SM_GPU = True
+SM_GPU = False
+SM_LOG_FREQ = -1 # 100 times total
 
 def train_cmd(
     task: Task,
@@ -21,6 +34,7 @@ def train_cmd(
         + [f"--{k} {v}" for k, v in hyperparams.items()]
         + [f"--DEV cuda" if SM_GPU else "--DEV cpu"]
         + [f"--ROOT {SM_ROOT}"]
+        + [f"--LOG_FREQ {SM_LOG_FREQ}"]
     )
 
 
@@ -29,7 +43,7 @@ def get_slurm_extra_resources():
         return " ".join(
             [
                 "--gres=gpu:1",
-                f"--partition={determine_cluster().value['partition']}",
+                f"--partition={Clusters[where_am_i()]['partition']}",
                 "--mem=5G",
                 "--time=1:00:00",
             ]

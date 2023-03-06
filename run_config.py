@@ -45,7 +45,7 @@ def get_slurm_extra_resources():
                 "--gres=gpu:1",
                 f"--partition={Clusters[where_am_i()]['partition']}",
                 "--mem=5G",
-                "--time=1:00:00",
+                "--time=2:00:00",
             ]
         )
     else:

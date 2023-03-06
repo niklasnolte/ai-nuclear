@@ -4,13 +4,13 @@ from sklearn.preprocessing import QuantileTransformer
 import argparse
 import math
 
-def weight_by_task(output_map: dict, config: argparse.Namespace) -> torch.Tensor:
+def weight_by_task(output_map: dict, args: argparse.Namespace) -> torch.Tensor:
     weights = []
     for target_name in output_map.keys():
-        if target_name in config.TARGETS_CLASSIFICATION:
-            weight = config.TARGETS_CLASSIFICATION[target_name]
+        if target_name in args.TARGETS_CLASSIFICATION:
+            weight = args.TARGETS_CLASSIFICATION[target_name]
         else:
-            weight = config.TARGETS_REGRESSION[target_name]
+            weight = args.TARGETS_REGRESSION[target_name]
         weights.append(weight)
     return torch.tensor(weights) / sum(weights)
 

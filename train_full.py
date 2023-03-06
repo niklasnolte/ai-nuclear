@@ -36,9 +36,9 @@ def train_FULL(args: argparse.Namespace, basedir: str):
         loss = (weights * train_loss * weight_scaler).mean()
         loss.backward()
         optimizer.step()
+
         if epoch % args.LOG_FREQ == 0:
             with torch.no_grad():
-                # Test
                 model.eval()
                 val_loss = metric_by_task(
                     out[test_mask],
@@ -47,7 +47,7 @@ def train_FULL(args: argparse.Namespace, basedir: str):
                     args,
                     qt=data.regression_transformer,
                 )
-                # save to wandb
+
                 if args.WANDB:
                     for i, target in enumerate(data.output_map.keys()):
                         wandb.log(
@@ -65,6 +65,7 @@ def train_FULL(args: argparse.Namespace, basedir: str):
                   for i, target in enumerate(data.output_map.keys()):
                       msg += f"{target}: {val_loss[i].item():.4f}\n"
                   print(msg)
-                # save model
-                torch.save(model.state_dict(), os.path.join(basedir, f"model_{epoch}.pt"))
+
+        if epoch % args.CKPT_FREQ == 0:
+                torch.save(model.cpu().state_dict(), os.path.join(basedir, f"model_{epoch}.pt"))
     torch.save(model, os.path.join(basedir, "model_FULL.pt"))

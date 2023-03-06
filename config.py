@@ -49,7 +49,7 @@ class Task(Enum):
             MODEL=["baseline"],
             WD=[1e-3],  # first one seems to be best
             LR=[1e-2],
-            EPOCHS=[1],
+            EPOCHS=[2],
             TRAIN_FRAC=[0.8],
             HIDDEN_DIM=[32],
             SEED=[0],

@@ -9,7 +9,7 @@ Clusters = dict(
     },
     HARVARD = {
         "partition": "iaifi_gpu",
-        "root": "~/data/AI-NUCLEAR-LOGS",
+        "root": os.path.expanduser("~/data/AI-NUCLEAR-LOGS"),
     }
 )
 

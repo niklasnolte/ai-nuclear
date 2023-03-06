@@ -45,7 +45,7 @@ def _args_postprocessing(args: argparse.Namespace):
     args.TARGETS_REGRESSION = _deserialize_dict(args.TARGETS_REGRESSION)
 
     # log freq
-    if args.LOG_FREQ == -1:
+    if args.CKPT_FREQ == -1:
         # only log last
         args.LOG_FREQ = args.EPOCHS + 1
     return args
@@ -63,7 +63,8 @@ def _parse_arguments(task):
     parser.add_argument("--DEV", type=str, default="cpu", help="device to use")
     parser.add_argument("--WANDB", action="store_true", default=False, help="use wandb or not")
     parser.add_argument("--ROOT", type=str, default="./results", help="root folder to store models")
-    parser.add_argument("--LOG_FREQ", type=int, default=-1, help="log every n epochs, -1 == only log the last")
+    parser.add_argument("--LOG_FREQ", type=int, default=100, help="log every n epochs")
+    parser.add_argument("--CKPT_FREQ", type=int, default=-1, help="save checkpoint every n epochs, -1 == only save the last")
     return parser.parse_args()
 
 

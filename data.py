@@ -167,7 +167,7 @@ def get_targets(df):
     return targets
 
 
-def get_data(recreate=False):
+def get_nuclear_data(recreate=False):
     def lc_read_csv(url):
         req = urllib.request.Request("https://nds.iaea.org/relnsd/v0/data?" + url)
         req.add_header(
@@ -194,7 +194,7 @@ Data = namedtuple(
 )
 
 
-def prepare_data(config : argparse.Namespace, recreate : bool =False):
+def prepare_nuclear_data(config : argparse.Namespace, recreate : bool =False):
     """Prepare data to be used for training. Transforms data to tensors, gets tokens X,targets y,
     vocab size and output map which is a dict of {target:output_shape}. Usually output_shape is 1 for regression
     and n_classes for classification.
@@ -204,7 +204,7 @@ def prepare_data(config : argparse.Namespace, recreate : bool =False):
         recreate (bool, optional): Force re-download of data and save to csv. Defaults to False.
     returns (Data): namedtuple of X, y, vocab_size, output_map, quantile_transformer
     """
-    targets = get_targets(get_data(recreate=recreate))
+    targets = get_targets(get_nuclear_data(recreate=recreate))
 
     X = torch.tensor(targets[["z", "n"]].values).long()
 
@@ -239,10 +239,51 @@ def prepare_data(config : argparse.Namespace, recreate : bool =False):
         feature_transformer,
     )
 
+def prepare_modular_data(args : argparse.Namespace):
+  # modular arithmetic data
+  # X = cartesian product of [0..p] x [0..p]
+  # y = (x1 op x2) % p
+  X = torch.cartesian_prod(torch.arange(args.P), torch.arange(args.P))
+  output_map = OrderedDict()
+  for target in args.TARGETS_CLASSIFICATION:
+    output_map[target] = args.P
+  for target in args.TARGETS_REGRESSION:
+    output_map[target] = 1
+
+  y = torch.zeros(X.shape[0], len(output_map))
+  for idx, target in enumerate(output_map):
+    if target == "add":
+      y[:, idx] = (X[:, 0] + X[:, 1]) % args.P
+    elif target == "subtract":
+      y[:, idx] = (X[:, 0] - X[:, 1]) % args.P
+    elif target == "multiply":
+      y[:, idx] = (X[:, 0] * X[:, 1]) % args.P
+    elif target == "divide":
+      y[:, idx] = (X[:, 0] / X[:, 1]) % args.P
+    else:
+      raise ValueError(f"Unknown target {target}")
+
+  feature_transformer = RobustScaler()
+  reg_cols = -len(args.TARGETS_REGRESSION)
+  if reg_cols != 0:
+    y[:,reg_cols:] = feature_transformer.fit_transform(y[:, reg_cols:])
+
+  return Data(
+    X.to(args.DEV),
+    y.to(args.DEV),
+    args.P,
+    output_map,
+    feature_transformer
+  )
+
 
 def train_test_split(data, train_frac, seed=1):
+    # TODO shuffle data when using SGD
     device = data.X.device
     torch.manual_seed(seed)
-    train_mask = torch.rand(data.X.shape[0]) < train_frac
+    train_mask = torch.ones(data.X.shape[0], dtype=torch.bool)
+    train_mask[int(train_frac * data.X.shape[0]):] = False
+    train_mask = train_mask[torch.randperm(data.X.shape[0])]
     test_mask = ~train_mask
     return train_mask.to(device), test_mask.to(device)
+

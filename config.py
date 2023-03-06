@@ -44,6 +44,21 @@ class Task(Enum):
         )
     )
 
+    MODULAR = serialize_elements_in_task(
+        dict(
+            WD=[5e-2],
+            LR=[1e-1],
+            EPOCHS=[50000],
+            TRAIN_FRAC=[0.5],
+            HIDDEN_DIM=[64, 128, 256],
+            SEED=[0, 1, 2],
+            P = [53, 97],
+            MODEL=["baseline"],
+            TARGETS_CLASSIFICATION=[{"add": 1, "subtract": 1, "multiply": 1, "divide": 1}],
+            TARGETS_REGRESSION=[{},],
+        )
+    )
+
     DEBUG = serialize_elements_in_task(
         dict(
             MODEL=["baseline"],

@@ -93,6 +93,10 @@ class SplitupModel(Base):
                 for od in output_dim
             ]
         )
+        self.readout = nn.Linear(hidden_dim, output_dim)
+        # bigger init
+        self.emb_proton.weight.data.uniform_(-1, 1)
+        self.emb_neutron.weight.data.uniform_(-1, 1)
 
     def forward_with_embeddings(self, x, embs):  # embs: [ batch_size, 2 * hidden_dim ]
         x = self.embed_input(x, embs)

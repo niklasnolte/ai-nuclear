@@ -27,6 +27,12 @@ def pick_random_index(max_idx, exp=-1):
     return sample + 1
 
 
+
+def random_softmax(shape, scale=1):
+    x = torch.rand(shape)
+    return torch.softmax(scale * x, dim=-1) * x.shape[-1]
+
+
 def weight_by_task(output_map: dict, args: argparse.Namespace) -> torch.Tensor:
     weights = []
     for target_name in output_map.keys():
@@ -92,7 +98,7 @@ def regularize_embedding_dim(
         except torch.linalg.LinAlgError: # sometimes svd fails with singular matrix
           return torch.zeros(1, device=X.device)
         Vt = Vt[:idx]  # [ idx, d_model]
-        # squueze out the embedding dimension
+        # squeeze out the embedding dimension
         embs.append(emb @ Vt.T @ Vt)
     out = model.forward_with_embeddings(X, embs)
     loss = loss_by_task(out, Y, output_map, config)

@@ -239,6 +239,43 @@ def prepare_nuclear_data(config : argparse.Namespace, recreate : bool =False):
         feature_transformer,
     )
 
+def prepare_modular_data(args : argparse.Namespace):
+  # modular arithmetic data
+  # X = cartesian product of [0..p] x [0..p]
+  # y = (x1 op x2) % p
+  X = torch.cartesian_prod(torch.arange(args.P), torch.arange(args.P))
+  output_map = OrderedDict()
+  for target in args.TARGETS_CLASSIFICATION:
+    output_map[target] = args.P
+  for target in args.TARGETS_REGRESSION:
+    output_map[target] = 1
+
+  y = torch.zeros(X.shape[0], len(output_map))
+  for idx, target in enumerate(output_map):
+    if target == "add":
+      y[:, idx] = (X[:, 0] + X[:, 1]) % args.P
+    elif target == "subtract":
+      y[:, idx] = (X[:, 0] - X[:, 1]) % args.P
+    elif target == "multiply":
+      y[:, idx] = (X[:, 0] * X[:, 1]) % args.P
+    elif target == "divide":
+      y[:, idx] = (X[:, 0] / X[:, 1]) % args.P
+    else:
+      raise ValueError(f"Unknown target {target}")
+
+  feature_transformer = RobustScaler()
+  reg_cols = -len(args.TARGETS_REGRESSION)
+  if reg_cols != 0:
+    y[:,reg_cols:] = feature_transformer.fit_transform(y[:, reg_cols:])
+
+  return Data(
+    X.to(args.DEV),
+    y.to(args.DEV),
+    args.P,
+    output_map,
+    feature_transformer
+  )
+
 
 def prepare_modular_data(args : argparse.Namespace):
   # modular arithmetic data
@@ -295,7 +332,7 @@ def train_test_split_sampled(data, train_frac, seed=1):
     """
     device = data.X.device
     torch.manual_seed(seed)
-    train_mask = torch.rand(data.X.shape[0]) < train_frac
+    train_mask = torch.rand(data.X.shape[0]) < train_frac 
     test_mask = ~train_mask
     return train_mask.to(device), test_mask.to(device)
 

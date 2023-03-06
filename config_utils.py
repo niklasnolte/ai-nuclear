@@ -46,10 +46,8 @@ def _args_postprocessing(args: argparse.Namespace):
 
     # log freq
     if args.LOG_FREQ == -1:
-        if args.EPOCHS > 100:
-            args.LOG_FREQ = args.EPOCHS // 100
-        else:
-            args.LOG_FREQ = 1
+        # only log last
+        args.LOG_FREQ = args.EPOCHS + 1
     return args
 
 

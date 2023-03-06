@@ -7,6 +7,10 @@ from data import prepare_data, train_test_split
 from model import get_model_and_optim
 from loss import loss_by_task, metric_by_task, weight_by_task
 
+def random_softmax(shape, scale=1):
+    x = torch.rand(shape)
+    return torch.softmax(scale * x, dim=-1) * x.shape[-1]
+
 
 def train_FULL(args: argparse.Namespace, basedir: str):
     data = prepare_data(args)
@@ -28,7 +32,8 @@ def train_FULL(args: argparse.Namespace, basedir: str):
         train_loss = loss_by_task(
             out[train_mask], data.y[train_mask], data.output_map, args
         )
-        loss = (weights * train_loss).mean()
+        weight_scaler = random_softmax(weights.shape, scale=args.RANDOM_WEIGHTS) if args.RANDOM_WEIGHTS else 1 
+        loss = (weights * train_loss * weight_scaler).mean()
         loss.backward()
         optimizer.step()
         if epoch % args.LOG_FREQ == 0:

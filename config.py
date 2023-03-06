@@ -14,6 +14,7 @@ class Task(Enum):
             HIDDEN_DIM=[512, 1024],
             SEED=[0, 1, 2],
             MODEL=["baseline"],
+            RANDOM_WEIGHTS=[10], # level of entropy in randomness. 0 is uniform. 1000 is random one hot.
             TARGETS_CLASSIFICATION=[
                 {"stability": 1, "parity": 1, "spin": 1, "isospin": 1},
                 {},
@@ -52,6 +53,7 @@ class Task(Enum):
             HIDDEN_DIM=[32],
             SEED=[0],
             MODEL=["baseline"],
+            RANDOM_WEIGHTS=[10],
             TARGETS_CLASSIFICATION=[
                 {"stability": 1, "parity": 1, "spin": 1, "isospin": 1},
             ],

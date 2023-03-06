@@ -12,16 +12,16 @@ class Locations:
   DEBUG = os.path.join(run_config.SM_ROOT, config_utils.get_name(config.Task.DEBUG))
   DEBUG_model = os.path.join(DEBUG, f"model_FULL.pt")
 
-# rule debug:
-#   input:
-#       expand(Locations.DEBUG_model,
-#             **config.Task.DEBUG.value)
 
 rule all:
   input:
       expand(Locations.FULL_model,
               **config.Task.FULL.value)
 
+rule debug:
+  input:
+      expand(Locations.DEBUG_model,
+            **config.Task.DEBUG.value)
 
 rule train_FULL:
   output:

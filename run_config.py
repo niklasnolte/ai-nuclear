@@ -19,7 +19,6 @@ SM_ROOT = Clusters[where_am_i()]["root"]
 SM_WANDB = True
 SM_SLURM = True
 SM_GPU = True
-SM_LOG_FREQ = -1 # only the last
 
 def train_cmd(
     task: Task,
@@ -34,7 +33,6 @@ def train_cmd(
         + [f"--{k} {v}" for k, v in hyperparams.items()]
         + [f"--DEV cuda" if SM_GPU else "--DEV cpu"]
         + [f"--ROOT {SM_ROOT}"]
-        + [f"--LOG_FREQ {SM_LOG_FREQ}"]
     )
 
 

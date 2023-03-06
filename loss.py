@@ -12,7 +12,8 @@ def weight_by_task(output_map: dict, args: argparse.Namespace) -> torch.Tensor:
         else:
             weight = args.TARGETS_REGRESSION[target_name]
         weights.append(weight)
-    return torch.tensor(weights) / sum(weights)
+    weights = torch.tensor(weights) / sum(weights)
+    return weights.to(args.DEV)
 
 
 def loss_by_task(
@@ -33,7 +34,7 @@ def loss_by_task(
     target_names = list(output_map.keys())
     # reshape output according to output_map and return tuple by regression and classification
     output_column = 0
-    loss = torch.zeros(len(target_names))
+    loss = torch.zeros(len(target_names), device=output.device)
     for target_column, target_name in enumerate(target_names):
         mask = ~torch.isnan(targets[:, target_column])
         masked_target = targets[:, target_column][mask]

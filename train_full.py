@@ -14,6 +14,7 @@ def random_softmax(shape, scale=1):
 
 def train_FULL(args: argparse.Namespace, basedir: str):
     data = prepare_data(args)
+    DEVICE = args.DEV
     train_mask, test_mask = train_test_split(
         data, train_frac=args.TRAIN_FRAC, seed=args.SEED
     )
@@ -29,10 +30,14 @@ def train_FULL(args: argparse.Namespace, basedir: str):
         model.train()
         optimizer.zero_grad()
         out = model(data.X)
+        # TODO there was a problem where loss was on cpu and backwarding to 
         train_loss = loss_by_task(
             out[train_mask], data.y[train_mask], data.output_map, args
         )
-        weight_scaler = random_softmax(weights.shape, scale=args.RANDOM_WEIGHTS) if args.RANDOM_WEIGHTS else 1 
+        if args.RANDOM_WEIGHTS:
+            weight_scaler = random_softmax(weights.shape, scale=args.RANDOM_WEIGHTS).to(DEVICE)
+        else:
+            weight_scaler = 1
         loss = (weights * train_loss * weight_scaler).mean()
         loss.backward()
         optimizer.step()
@@ -67,5 +72,5 @@ def train_FULL(args: argparse.Namespace, basedir: str):
                   print(msg)
 
         if epoch % args.CKPT_FREQ == 0:
-                torch.save(model.cpu().state_dict(), os.path.join(basedir, f"model_{epoch}.pt"))
+                torch.save(model.state_dict(), os.path.join(basedir, f"model_{epoch}.pt"))
     torch.save(model, os.path.join(basedir, "model_FULL.pt"))

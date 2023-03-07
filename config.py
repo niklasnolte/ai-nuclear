@@ -10,14 +10,13 @@ class Task(Enum):
             MODEL=["baseline"],
             WD=[3e-3],  # first one seems to be best
             LR=[1e-1],
-            EPOCHS=[10000],
+            EPOCHS=[100000],
             TRAIN_FRAC=[0.8],
             HIDDEN_DIM=[1024],
             SEED=[0, 1, 2],
-            RANDOM_WEIGHTS=[10], # level of entropy in randomness. 0 is uniform. 1000 is random one hot.
+            RANDOM_WEIGHTS=[0.1], # level of entropy in randomness. 0 is uniform. 1000 is random one hot.
             TARGETS_CLASSIFICATION=[
                 {"stability": 1, "parity": 1, "spin": 1, "isospin": 1},
-                {},
             ],
             TARGETS_REGRESSION=[
                 {
@@ -33,12 +32,6 @@ class Task(Enum):
                     "qec": 1,
                     "sn": 1,
                     "sp": 1,
-                },
-                {
-                    "z": 1,
-                    "n": 1,
-                    "binding_energy": 1,
-                    "radius": 1,
                 },
             ],
         )

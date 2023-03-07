@@ -10,6 +10,10 @@ from data import Data
 class BaselineModel(nn.Module):
     def __init__(self, n_protons, n_neutrons, hidden_dim, output_dim):
         super().__init__()
+        self.n_protons = n_protons
+        self.n_neutrons = n_neutrons
+        self.hidden_dim = hidden_dim
+
         self.emb_proton = nn.Embedding(
             n_protons, hidden_dim
         )  # [ batch_size, hidden_dim ]
@@ -37,6 +41,15 @@ class BaselineModel(nn.Module):
         x = self.readout(x)  # [ batch_size, output_dim ]
         return x
 
+
+class TiedModel(BaselineModel):
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        del self.emb_proton
+        del self.emb_neutron
+        n = max(self.n_protons, self.n_neutrons)
+        self.emb_proton = torch.nn.Embedding(n, self.hidden_dim)
+        self.emb_neutron = self.emb_proton
 
 class ResidualBlock(nn.Module):
     def __init__(self, d_model, hidden_dim, act=nn.SiLU(), elementwise_affine=True):
@@ -87,6 +100,8 @@ def get_model_fn(config):
         return BaselineModel
     elif config.MODEL == "residual":
         return ResidualModel
+    elif config.MODEL == "tied":
+        return TiedModel
     else:
         raise ValueError(
             f"Unknown model: {config.MODEL}, choose between 'baseline' and 'residual'"

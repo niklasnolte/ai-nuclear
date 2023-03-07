@@ -7,12 +7,12 @@ class Task(Enum):
     # otherwise enum is a poopy head
     FULL = serialize_elements_in_task(
         dict(
-            MODEL=["baseline"],
+            MODEL=["tied"],
             WD=[3e-3],  # first one seems to be best
             LR=[1e-1],
             EPOCHS=[100000],
             TRAIN_FRAC=[0.8],
-            HIDDEN_DIM=[1024],
+            HIDDEN_DIM=[64],
             SEED=[0, 1, 2],
             RANDOM_WEIGHTS=[0.1], # level of entropy in randomness. 0 is uniform. 1000 is random one hot.
             TARGETS_CLASSIFICATION=[
@@ -39,7 +39,7 @@ class Task(Enum):
 
     DEBUG = serialize_elements_in_task(
         dict(
-            MODEL=["baseline"],
+            MODEL=["tied"],
             WD=[1e-3],  # first one seems to be best
             LR=[1e-2],
             EPOCHS=[2],

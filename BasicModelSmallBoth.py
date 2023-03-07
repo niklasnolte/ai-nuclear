@@ -97,13 +97,13 @@ def run_models(dir, test_sizes, run = 'both'):
           df.to_csv(dir+'.csv')
 
 if __name__ == '__main__':
-    run = 'both'
-    dir = f'mod_arith_{run}_all'
-    first_part = np.linspace(0.05,0.6, 12)
-    first_part = np.repeat(first_part, 3)
-    second_part = np.linspace(0.65, 0.9, 26)
+    run = 'combined'
+    dir = f'mod_arith_mult_apb_atb_other'
+    #first_part = np.linspace(0.05,0.6, 12)
+    #first_part = np.repeat(first_part, 3)
+    second_part = np.linspace(0.82, 0.9, 9)
     second_part = np.repeat(second_part, 5) 
-    test_sizes = np.concatenate((first_part, second_part, [0.95]*3))
+    test_sizes = np.concatenate((second_part, [0.95]*3))
     run_models(dir, test_sizes, run = run)
 
 

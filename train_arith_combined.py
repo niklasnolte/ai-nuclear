@@ -18,7 +18,7 @@ def get_data(test_size = 0.2, seed = 42, run = 'combined'):
     for a in range(LIMIT):
         for b in range(LIMIT):
             x = [a,b]
-            y = [(a+b)%LIMIT, (a-b)%LIMIT]
+            y = [(a+b)%LIMIT, (a*b)%LIMIT]
             Xs.append(x)
             ys.append(y)
     Xs, ys = torch.tensor(Xs).int(), torch.tensor(ys).long()
@@ -71,7 +71,7 @@ def train(modelclass, lr, wd, embed_dim, basepath, device, title, seed = 1, test
   loss_fn = nn.CrossEntropyLoss()
   optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=wd)
 
-  bar = tqdm.tqdm(range(int(2e4)))
+  bar = tqdm.tqdm(range(int(1e4)))
   lowest_loss = 1e10
 
   loss_list = []

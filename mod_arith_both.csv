@@ -1,2 +1,0 @@
-,title,seed,test_size,epochs,test_acc,train_acc
-0,BasicModelSmall_256dim_0.5ts_1seed_both,1,0.5,163,1.0,1.0

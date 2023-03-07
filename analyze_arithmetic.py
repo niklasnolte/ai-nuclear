@@ -20,11 +20,11 @@ def plot_test_split():
     plt.show()
 
 def plot_splits():
-    #dir = 'good_mod_arith_data'
+    dir = 'good_mod_arith_data'
     #df_only_reg = pd.read_csv(f'{dir}/mod_arith_only.csv')
     #df_only_fine = pd.read_csv(f'{dir}/mod_arith_only_fine.csv')
     #df_only = pd.concat((df_only_reg, df_only_fine))
-    df_only = pd.read_csv('mod_arith_only_all.csv')
+    df_only = pd.read_csv(f'{dir}/mod_arith_only_all.csv')
     df_only['test_apb_acc'] = df_only['test_acc']
     
     #df_both_reg = pd.read_csv(f'{dir}/mod_arith_both.csv')
@@ -35,17 +35,25 @@ def plot_splits():
     #df_both_before['train_acc'] = (df_both_before['train_apb_acc']+df_both_before['train_amb_acc'])/2
 
     #df_both_after = pd.read_csv(f'{dir}/mod_arith_both_fine_all.csv')
-    df_both = pd.read_csv('mod_arith_combined_all.csv')
+    df_comb = pd.read_csv(f'{dir}/mod_arith_combined_all.csv')
 
     #df_comb_reg = pd.read_csv(f'{dir}/mod_arith_combined.csv')
     #df_comb_fine = pd.read_csv(f'{dir}/mod_arith_combined_fine.csv')
     #df_comb = pd.concat((df_comb_reg, df_comb_fine))
-    df_comb = pd.read_csv('mod_arith_both_all.csv')
+    #df_comb = pd.read_csv(f'{dir}/mod_arith_both_all.csv')
 
-    colors = ['r', 'g', 'b']
-    labels = ['a+b and a-b both model', 'a+b and a-b combined model', 'a+b only model']
-    dfs = [df_both, df_comb, df_only]
+    df_apbambatb = pd.read_csv('mod_arith_mult_apb_amb_atb.csv')
+    
+    df_apbatb_first = pd.read_csv('mod_arith_mult_apb_atb.csv')
+    df_apbatb_second = pd.read_csv('mod_arith_mult_apb_atb_other.csv')
+    df_apbatb = pd.concat((df_apbatb_first, df_apbatb_second))
+
+    colors = ['r', 'g', 'b', 'purple']
+    labels = ['a+b, a-b, a*b model', 'a+b and a*b model', 'a+b and a-b model', 'a+b only model']
+    dfs = [df_apbambatb,df_apbatb, df_comb, df_only]
+
     for i,df in enumerate(dfs):
+    
         df = df.sort_values(by = 'test_size')
         mean = []
         std = []
@@ -55,12 +63,12 @@ def plot_splits():
                 mean.append(df_ts['test_apb_acc'].mean())
                 std.append(df_ts['test_apb_acc'].std()/df_ts.shape[0])
 
-        plt.errorbar(df['test_size'], mean, yerr = std, label = labels[i], color = colors[i], fmt = 'o', alpha  = 0.2)
+        plt.errorbar(df['test_size'], mean, yerr = std, label = labels[i], color = colors[i], fmt = 'o', alpha  = 1)
         plt.plot(df['test_size'], mean, lw = 0.2, color = colors[i])
-    plt.xlim((0.65,1))
+    plt.xlim((0,1))
     plt.title('Modular Arithmetic Performance')
     plt.xlabel('Test Set Proportion')
-    plt.ylabel('Test Accuracy')
+    plt.ylabel('A+B Test Accuracy')
     plt.legend()
     plt.show()
 

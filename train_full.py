@@ -36,7 +36,6 @@ def train_FULL(args: argparse.Namespace, basedir: str):
         loss = (weights * train_loss * weight_scaler).mean()
         loss.backward()
         optimizer.step()
-
         if epoch % args.LOG_FREQ == 0:
             with torch.no_grad():
                 model.eval()

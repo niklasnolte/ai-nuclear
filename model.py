@@ -1,5 +1,4 @@
 import torch
-from collections.abc import Iterable
 from torch import nn
 from functools import partial
 import mup
@@ -19,11 +18,9 @@ class BaselineModel(nn.Module):
         """
 
         super().__init__()
-
         if isinstance(vocab_size, int):
-            self.emb = nn.Embedding(vocab_size, hidden_dim)
-        else:
-            self.emb = nn.ModuleList([nn.Embedding(v, hidden_dim) for v in vocab_size])
+            vocab_size = [vocab_size]
+        self.emb = nn.ModuleList([nn.Embedding(v, hidden_dim) for v in vocab_size])
 
         self.nonlinear = nn.Sequential(
             nn.Linear(2 * hidden_dim, hidden_dim),
@@ -34,15 +31,66 @@ class BaselineModel(nn.Module):
             nn.SiLU(),
         )
         self.readout = nn.Linear(hidden_dim, output_dim)
+        print(f"nparams: {sum(p.numel() for p in self.parameters())}")
 
     def forward(self, x):  # x: [ batch_size, 2 ]
-        if isinstance(self.emb, Iterable):
-            embs = [self.emb[i](x[:, i]) for i in range(len(self.emb))]
+        if len(self.emb) == 1:
+            embs = [self.emb[0](x[:, i]) for i in range(x.shape[1])]
         else:
-            embs = [self.emb(x[:, i]) for i in range(x.shape[1])]
+            embs = [self.emb[i](x[:, i]) for i in range(len(self.emb))]
         x = torch.cat(embs, dim=1)  # [ batch_size, 2 * hidden_dim ]
         x = self.nonlinear(x)  # [ batch_size, hidden_dim ]
         x = self.readout(x)  # [ batch_size, output_dim ]
+        return x
+
+
+class SplitupModel(nn.Module):
+    def __init__(
+        self,
+        vocab_size: Union[int, Iterable],
+        hidden_dim: int,
+        output_dim: Iterable[int],
+    ):
+        """
+        :param vocab_size: number of tokens in the vocabulary, or an Iterable of vocab sizes for each input
+        :param hidden_dim: dimension of the hidden layer
+        :param output_dim: multiple dimensions of the output layers (later concatenated)
+        """
+
+        super().__init__()
+
+        if isinstance(vocab_size, int):
+            vocab_size = [vocab_size]
+        self.emb = nn.ModuleList([nn.Embedding(v, hidden_dim) for v in vocab_size])
+
+
+        self.n_tasks = len(output_dim)
+
+        #assert hidden_dim % self.n_tasks == 0, f"hidden_dim ({hidden_dim}) must be divisible by n_tasks ({self.n_tasks})"
+
+
+        self.nonlinears = nn.ModuleList([
+            nn.Sequential(
+                nn.Linear(2*hidden_dim, hidden_dim),
+                nn.SiLU(),
+                nn.LayerNorm(hidden_dim, elementwise_affine=False),
+                #nn.BatchNorm1d(hidden_dim, affine=False),
+                nn.Linear(hidden_dim, hidden_dim),
+                nn.SiLU(),
+                mup.MuReadout(hidden_dim, od),
+            )
+            for od in output_dim
+        ])
+        # mup could change the readout scale
+        print(f"nparams: {sum(p.numel() for p in self.parameters())}")
+
+    def forward(self, x):  # x: [ batch_size, 2 ]
+        if len(self.emb) == 1:
+            embs = [self.emb[0](x[:, i]) for i in range(x.shape[1])]
+        else:
+            embs = [self.emb[i](x[:, i]) for i in range(len(self.emb))]
+        x = torch.cat(embs, dim=1)  # [ batch_size, 2 * hidden_dim ]
+        x = torch.cat([nl(x) for nl in self.nonlinears], dim=1)  # [ batch_size, sum(output_dim) ]
         return x
 
 
@@ -113,6 +161,8 @@ class ResidualModel(nn.Module):
 def get_model_fn(config):
     if config.MODEL == "baseline":
         return BaselineModel
+    elif config.MODEL == "splitup":
+        return SplitupModel
     elif config.MODEL == "residual":
         return ResidualModel
     else:
@@ -132,6 +182,9 @@ def _append_readout(model_fn: Callable) -> Callable:
 
     def model_fn_with_readout(*args, **kwargs):
         model = model_fn(*args, **kwargs)
+        # check if model already has a readout, FIXME: this is a hack
+        if any([isinstance(x, mup.MuReadout) for x in model.modules()]):
+          return model
         if isinstance(model, nn.Sequential):
             assert isinstance(
                 model[-1], nn.Linear
@@ -182,7 +235,10 @@ def make_mup(model_fn: Callable, **scale_kwargs) -> nn.Module:
 
 def get_model_and_optim(data: Data, config):
     # set up model
-    output_dim = sum(data.output_map.values())
+    if config.MODEL == "splitup":
+      output_dim = list(data.output_map.values())
+    else:
+      output_dim = sum(data.output_map.values())
 
     model_fn = get_model_fn(config)
     model_fn = partial(

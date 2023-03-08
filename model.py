@@ -55,6 +55,7 @@ class BaselineModel(Base):
             nn.SiLU(),
         )
         self.readout = nn.Linear(hidden_dim, output_dim)
+        print(f"nparams: {sum(p.numel() for p in self.parameters())}")
 
     def forward_with_embeddings(self, x, embs):  # embs: [ batch_size, 2 * hidden_dim ]
         x = self.embed_input(x, embs)

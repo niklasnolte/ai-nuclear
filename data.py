@@ -239,6 +239,7 @@ def prepare_nuclear_data(config : argparse.Namespace, recreate : bool =False):
         feature_transformer,
     )
 
+
 def prepare_modular_data(args : argparse.Namespace):
   # modular arithmetic data
   # X = cartesian product of [0..p] x [0..p]
@@ -258,8 +259,6 @@ def prepare_modular_data(args : argparse.Namespace):
       y[:, idx] = (X[:, 0] - X[:, 1]) % args.P
     elif target == "multiply":
       y[:, idx] = (X[:, 0] * X[:, 1]) % args.P
-    elif target == "divide":
-      y[:, idx] = (X[:, 0] / X[:, 1]) % args.P
     else:
       raise ValueError(f"Unknown target {target}")
 

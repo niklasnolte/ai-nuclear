@@ -12,7 +12,8 @@ class BaselineModel(nn.Module):
         self, vocab_size: Union[int, Iterable], hidden_dim: int, output_dim: int
     ):
         """
-        :param vocab_size: number of tokens in the vocabulary, or an Iterable of vocab sizes for each input
+        :param vocab_size: number of tokens in the vocabulary,
+          or an Iterable of vocab sizes for each input. One embedding layer will be created for each input.
         :param hidden_dim: dimension of the hidden layer
         :param output_dim: dimension of the output layer
         """
@@ -51,7 +52,8 @@ class SplitupModel(nn.Module):
         output_dim: Iterable[int],
     ):
         """
-        :param vocab_size: number of tokens in the vocabulary, or an Iterable of vocab sizes for each input
+        :param vocab_size: number of tokens in the vocabulary,
+          or an Iterable of vocab sizes for each input. One embedding layer will be created for each input.
         :param hidden_dim: dimension of the hidden layer
         :param output_dim: multiple dimensions of the output layers (later concatenated)
         """
@@ -62,23 +64,22 @@ class SplitupModel(nn.Module):
             vocab_size = [vocab_size]
         self.emb = nn.ModuleList([nn.Embedding(v, hidden_dim) for v in vocab_size])
 
-
         self.n_tasks = len(output_dim)
 
-        #assert hidden_dim % self.n_tasks == 0, f"hidden_dim ({hidden_dim}) must be divisible by n_tasks ({self.n_tasks})"
-
         d_model = hidden_dim // self.n_tasks
-        self.nonlinears = nn.ModuleList([
-            nn.Sequential(
-                nn.Linear(2*hidden_dim, d_model),
-                nn.SiLU(),
-                nn.LayerNorm(d_model, elementwise_affine=False),
-                nn.Linear(d_model, d_model),
-                nn.SiLU(),
-                mup.MuReadout(d_model, od),
-            )
-            for od in output_dim
-        ])
+        self.nonlinears = nn.ModuleList(
+            [
+                nn.Sequential(
+                    nn.Linear(2 * hidden_dim, d_model),
+                    nn.SiLU(),
+                    nn.LayerNorm(d_model, elementwise_affine=False),
+                    nn.Linear(d_model, d_model),
+                    nn.SiLU(),
+                    mup.MuReadout(d_model, od),
+                )
+                for od in output_dim
+            ]
+        )
 
     def forward(self, x):  # x: [ batch_size, 2 ]
         if len(self.emb) == 1:
@@ -86,7 +87,9 @@ class SplitupModel(nn.Module):
         else:
             embs = [self.emb[i](x[:, i]) for i in range(len(self.emb))]
         x = torch.cat(embs, dim=1)  # [ batch_size, 2 * hidden_dim ]
-        x = torch.cat([nl(x) for nl in self.nonlinears], dim=1)  # [ batch_size, sum(output_dim) ]
+        x = torch.cat(
+            [nl(x) for nl in self.nonlinears], dim=1
+        )  # [ batch_size, sum(output_dim) ]
         return x
 
 
@@ -161,8 +164,6 @@ def get_model_fn(config):
         return SplitupModel
     elif config.MODEL == "residual":
         return ResidualModel
-    elif config.MODEL == "tied":
-        return TiedModel
     else:
         raise ValueError(
             f"Unknown model: {config.MODEL}, choose between 'baseline' and 'residual'"
@@ -182,7 +183,7 @@ def _append_readout(model_fn: Callable) -> Callable:
         model = model_fn(*args, **kwargs)
         # check if model already has a readout, FIXME: this is a hack
         if any([isinstance(x, mup.MuReadout) for x in model.modules()]):
-          return model
+            return model
         if isinstance(model, nn.Sequential):
             assert isinstance(
                 model[-1], nn.Linear
@@ -235,9 +236,9 @@ def make_mup(model_fn: Callable, **scale_kwargs) -> nn.Module:
 def get_model_and_optim(data: Data, config):
     # set up model
     if config.MODEL == "splitup":
-      output_dim = list(data.output_map.values())
+        output_dim = list(data.output_map.values())
     else:
-      output_dim = sum(data.output_map.values())
+        output_dim = sum(data.output_map.values())
 
     model_fn = get_model_fn(config)
     model_fn = partial(

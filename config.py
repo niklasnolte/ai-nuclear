@@ -58,7 +58,7 @@ class Task(Enum):
 
     DEBUG = serialize_elements_in_task(
         dict(
-            MODEL=["tied"],
+            MODEL=["baseline"],
             WD=[1e-3],  # first one seems to be best
             LR=[1e-2],
             EPOCHS=[2],

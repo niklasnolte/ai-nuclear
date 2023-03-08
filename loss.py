@@ -4,6 +4,7 @@ from sklearn.preprocessing import QuantileTransformer
 import functools
 import argparse
 import math
+import unittest
 from model import Base
 
 
@@ -181,48 +182,44 @@ def metric_by_task(
     return metrics
 
 
-def test_loss_by_task():
-    output = torch.tensor([[0.1, 0.9, 0.1], [0.9, 0.1, 0.9]])
-    targets = torch.tensor([[1.0, 0.0], [0.0, 1.0]])
-    output_map = {"a": 2, "b": 1}
-    config = argparse.Namespace()
-    config.TARGETS_CLASSIFICATION = ["a"]
-    config.TARGETS_REGRESSION = ["b"]
-    loss = loss_by_task(output, targets, output_map, config)
-    assert loss.shape == (2,)
-    assert loss[0] == F.cross_entropy(output[:, :2], targets[:, 0].long())
-    assert loss[1] == F.mse_loss(output[:, 2], targets[:, 1].float())
-    print("test_loss_by_task passed")
+class TestMetrics(unittest.TestCase):
+    def test_loss_by_task(self):
+        output = torch.tensor([[0.1, 0.9, 0.1], [0.9, 0.1, 0.9]])
+        targets = torch.tensor([[1.0, 0.0], [0.0, 1.0]])
+        output_map = {"a": 2, "b": 1}
+        config = argparse.Namespace()
+        config.TARGETS_CLASSIFICATION = ["a"]
+        config.TARGETS_REGRESSION = ["b"]
+        loss = loss_by_task(output, targets, output_map, config)
+        self.assertEqual(loss.shape, (2,))
+        self.assertEqual(loss[0], F.cross_entropy(output[:, :2], targets[:, 0].long()))
+        self.assertEqual(loss[1], F.mse_loss(output[:, 2], targets[:, 1].float()))
 
+    def test_get_balanced_accuracy(self):
+        # test with class weights that are not uniform
+        output = torch.tensor([[0.1, 0.9], [0.9, 0.1], [0.1, 0.9]])
+        targets = torch.tensor([1.0, 1.0, 0.0])
+        acc = get_balanced_accuracy(output, targets)
+        self.assertEqual(acc.item(), 0.25)
 
-def test_get_balanced_accuracy():
-    # test with class weights that are not uniform
-    output = torch.tensor([[0.1, 0.9], [0.9, 0.1], [0.1, 0.9]])
-    targets = torch.tensor([1.0, 1.0, 0.0])
-    acc = get_balanced_accuracy(output, targets)
-    assert math.isclose(acc.item(), 0.25)
-    print("test_get_accuracy passed")
+    def test_metric_by_task(self):
+        # test metrics with class weights that are not uniform
 
-
-def test_metric_by_task():
-    # test metrics with class weights that are not uniform
-
-    output = torch.tensor([[0.1, 0.9, 0.1], [0.9, 0.1, 0.9]])
-    targets = torch.tensor([[1.0, 0.0], [0.0, 1.0]])
-    output_map = {"a": 2, "b": 1}
-    config = argparse.Namespace()
-    config.TARGETS_CLASSIFICATION = ["a"]
-    config.TARGETS_REGRESSION = ["b"]
-    metrics = metric_by_task(output, targets, output_map, config)
-    assert metrics.shape == (2,)
-    assert metrics[0] == 100 * get_balanced_accuracy(
-        output[:, :2], targets[:, 0].long()
-    )
-    assert metrics[1] == F.mse_loss(output[:, 2], targets[:, 1].float()).sqrt()
-    print("test_metric_by_task passed")
+        output = torch.tensor([[0.1, 0.9, 0.1], [0.9, 0.1, 0.9]])
+        targets = torch.tensor([[1.0, 0.0], [0.0, 1.0]])
+        output_map = {"a": 2, "b": 1}
+        config = argparse.Namespace()
+        config.TARGETS_CLASSIFICATION = ["a"]
+        config.TARGETS_REGRESSION = ["b"]
+        metrics = metric_by_task(output, targets, output_map, config)
+        self.assertEqual(metrics.shape, (2,))
+        self.assertEqual(
+            metrics[0], 100 * get_balanced_accuracy(output[:, :2], targets[:, 0].long())
+        )
+        self.assertEqual(
+            metrics[1], F.mse_loss(output[:, 2], targets[:, 1].float()).sqrt()
+        )
 
 
 if __name__ == "__main__":
-    test_loss_by_task()
-    test_get_balanced_accuracy()
-    test_metric_by_task()
+    unittest.main(argv=[""], verbosity=2, exit=False)

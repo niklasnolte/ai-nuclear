@@ -161,6 +161,8 @@ def get_model_fn(config):
         return SplitupModel
     elif config.MODEL == "residual":
         return ResidualModel
+    elif config.MODEL == "tied":
+        return TiedModel
     else:
         raise ValueError(
             f"Unknown model: {config.MODEL}, choose between 'baseline' and 'residual'"

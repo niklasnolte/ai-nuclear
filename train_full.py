@@ -15,6 +15,7 @@ def train_FULL(args: argparse.Namespace, basedir: str):
     )
 
     model, optimizer = get_model_and_optim(data, args)
+    wandb.config.update({"n_params": sum(p.numel() for p in model.parameters())})
     weights = weight_by_task(data.output_map, args)
     if not args.WANDB:
       bar = tqdm.trange(args.EPOCHS)

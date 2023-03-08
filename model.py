@@ -31,7 +31,6 @@ class BaselineModel(nn.Module):
             nn.SiLU(),
         )
         self.readout = nn.Linear(hidden_dim, output_dim)
-        print(f"nparams: {sum(p.numel() for p in self.parameters())}")
 
     def forward(self, x):  # x: [ batch_size, 2 ]
         if len(self.emb) == 1:
@@ -68,21 +67,18 @@ class SplitupModel(nn.Module):
 
         #assert hidden_dim % self.n_tasks == 0, f"hidden_dim ({hidden_dim}) must be divisible by n_tasks ({self.n_tasks})"
 
-
+        d_model = hidden_dim // self.n_tasks
         self.nonlinears = nn.ModuleList([
             nn.Sequential(
-                nn.Linear(2*hidden_dim, hidden_dim),
+                nn.Linear(2*hidden_dim, d_model),
                 nn.SiLU(),
-                nn.LayerNorm(hidden_dim, elementwise_affine=False),
-                #nn.BatchNorm1d(hidden_dim, affine=False),
-                nn.Linear(hidden_dim, hidden_dim),
+                nn.LayerNorm(d_model, elementwise_affine=False),
+                nn.Linear(d_model, d_model),
                 nn.SiLU(),
-                mup.MuReadout(hidden_dim, od),
+                mup.MuReadout(d_model, od),
             )
             for od in output_dim
         ])
-        # mup could change the readout scale
-        print(f"nparams: {sum(p.numel() for p in self.parameters())}")
 
     def forward(self, x):  # x: [ batch_size, 2 ]
         if len(self.emb) == 1:
@@ -221,12 +217,13 @@ def make_mup(model_fn: Callable, **scale_kwargs) -> nn.Module:
             "Depth found in scale_kwargs. Scaling depth is not allowed by muP. Is this intentional?"
         )
     model_fn = _append_readout(model_fn)
-    base_kwargs = {k: 1 for k in scale_kwargs}
-    delta_kwargs = {k: 2 for k in scale_kwargs}
+    base_kwargs = {k: 32 for k in scale_kwargs}
+    delta_kwargs = {k: 64 for k in scale_kwargs}
     base = model_fn(**base_kwargs)
     delta = model_fn(**delta_kwargs)
     model = model_fn(**scale_kwargs)
     mup.set_base_shapes(model, base, delta=delta)
+    del base, delta
     for name, param in model.named_parameters():
         if "weight" in name.lower():  # FIXME or not
             mup.init.kaiming_uniform_(param, a=5**0.5)

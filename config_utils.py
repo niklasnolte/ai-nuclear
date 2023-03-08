@@ -73,9 +73,7 @@ def _make_suffix_for(arg: str):
     define the name suffixes when adding an arg, eg mask_seed -> _maskseed{MASKSEED}
     this suffix has unfilled format braces, to be filled by the get_qualifed_name function
     """
-    if arg == "MODEL":
-        return ""
-    return f"_{arg.lower().replace('_', '')}{{{arg}}}"
+    return f"{arg.lower().replace('_', '')}_{{{arg}}}"
 
 
 def _get_qualified_name(task, args):
@@ -84,11 +82,9 @@ def _get_qualified_name(task, args):
 
 
 def get_name(task):
-    name = "".join(
+    name = "/".join(
         [
-            f"{task.name}/",
-            "{MODEL}/",
-            "run",
+            f"{task.name}",
             *[_make_suffix_for(hp) for hp in task.value.keys()],
         ]
     )

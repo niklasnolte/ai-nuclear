@@ -5,7 +5,7 @@ import argparse
 import wandb
 from data import prepare_nuclear_data, train_test_split
 from model import get_model_and_optim
-from loss import loss_by_task, metric_by_task, weight_by_task, random_softmax
+from loss import loss_by_task, metric_by_task, weight_by_task, random_softmax, regularize_embedding_dim
 
 def train_FULL(args: argparse.Namespace, basedir: str):
     data = prepare_nuclear_data(args)
@@ -31,12 +31,20 @@ def train_FULL(args: argparse.Namespace, basedir: str):
         train_loss = loss_by_task(
             out[train_mask], data.y[train_mask], data.output_map, args
         )
+
+
         if args.RANDOM_WEIGHTS:
             weight_scaler = random_softmax(weights.shape, scale=args.RANDOM_WEIGHTS).to(DEVICE)
         else:
             weight_scaler = 1
-        loss = (weights * train_loss * weight_scaler).mean()
-        loss.backward()
+
+        loss = weights * train_loss * weight_scaler
+
+        if args.DIMREG_COEFF > 0:
+          dimreg = regularize_embedding_dim(model, data.X[train_mask], data.y[train_mask], data.output_map, args)
+          loss += args.DIMREG_COEFF * dimreg
+
+        loss.mean().backward()
         optimizer.step()
         if epoch % args.LOG_FREQ == 0:
             with torch.no_grad():

@@ -6,8 +6,32 @@ import warnings
 from typing import Callable, Union, Iterable
 from data import Data
 
+class Base(nn.Module):
+    def __init__(
+        self, vocab_size: Union[int, Iterable], hidden_dim: int
+    ):
+      super().__init__()
+      if isinstance(vocab_size, int):
+          vocab_size = [vocab_size]
+      self.emb = nn.ParameterList([nn.Embedding(v, hidden_dim).weight for v in vocab_size])
+      self.hidden_dim = hidden_dim
 
-class BaselineModel(nn.Module):
+    def forward_with_embeddings(self, x, embs):
+        # x = self.embed_input(x, embs)
+        # continue here
+        raise NotImplementedError()
+
+    def forward(self, x):
+        return self.forward_with_embeddings(x, self.emb)
+
+    def embed_input(self, x, embs):
+        if len(embs) == 1:
+            embs = [embs[0][x[:, i]] for i in range(x.shape[1])]
+        else:
+            embs = [embs[i][x[:, i]] for i in range(len(embs))]
+        return torch.cat(embs, dim=1)  # [ batch_size, 2 * hidden_dim ]
+
+class BaselineModel(Base):
     def __init__(
         self, vocab_size: Union[int, Iterable], hidden_dim: int, output_dim: int
     ):
@@ -18,10 +42,7 @@ class BaselineModel(nn.Module):
         :param output_dim: dimension of the output layer
         """
 
-        super().__init__()
-        if isinstance(vocab_size, int):
-            vocab_size = [vocab_size]
-        self.emb = nn.ModuleList([nn.Embedding(v, hidden_dim) for v in vocab_size])
+        super().__init__(vocab_size, hidden_dim)
 
         self.nonlinear = nn.Sequential(
             nn.Linear(2 * hidden_dim, hidden_dim),
@@ -33,18 +54,12 @@ class BaselineModel(nn.Module):
         )
         self.readout = nn.Linear(hidden_dim, output_dim)
 
-    def forward(self, x):  # x: [ batch_size, 2 ]
-        if len(self.emb) == 1:
-            embs = [self.emb[0](x[:, i]) for i in range(x.shape[1])]
-        else:
-            embs = [self.emb[i](x[:, i]) for i in range(len(self.emb))]
-        x = torch.cat(embs, dim=1)  # [ batch_size, 2 * hidden_dim ]
+    def forward_with_embeddings(self, x, embs):  # embs: [ batch_size, 2 * hidden_dim ]
+        x = self.embed_input(x, embs)
         x = self.nonlinear(x)  # [ batch_size, hidden_dim ]
-        x = self.readout(x)  # [ batch_size, output_dim ]
-        return x
+        return self.readout(x)  # [ batch_size, output_dim ]
 
-
-class SplitupModel(nn.Module):
+class SplitupModel(Base):
     def __init__(
         self,
         vocab_size: Union[int, Iterable],
@@ -58,11 +73,7 @@ class SplitupModel(nn.Module):
         :param output_dim: multiple dimensions of the output layers (later concatenated)
         """
 
-        super().__init__()
-
-        if isinstance(vocab_size, int):
-            vocab_size = [vocab_size]
-        self.emb = nn.ModuleList([nn.Embedding(v, hidden_dim) for v in vocab_size])
+        super().__init__(vocab_size, hidden_dim)
 
         self.n_tasks = len(output_dim)
 
@@ -81,80 +92,11 @@ class SplitupModel(nn.Module):
             ]
         )
 
-    def forward(self, x):  # x: [ batch_size, 2 ]
-        if len(self.emb) == 1:
-            embs = [self.emb[0](x[:, i]) for i in range(x.shape[1])]
-        else:
-            embs = [self.emb[i](x[:, i]) for i in range(len(self.emb))]
-        x = torch.cat(embs, dim=1)  # [ batch_size, 2 * hidden_dim ]
-        x = torch.cat(
+    def forward_with_embeddings(self, x, embs):  # embs: [ batch_size, 2 * hidden_dim ]
+        x = self.embed_input(x, embs)
+        return torch.cat(
             [nl(x) for nl in self.nonlinears], dim=1
         )  # [ batch_size, sum(output_dim) ]
-        return x
-
-
-class ResidualBlock(nn.Module):
-    def __init__(
-        self, d_model: int, hidden_dim: int, act=nn.SiLU(), elementwise_affine=True
-    ):
-        """
-        :param d_model: dimension of the input and output
-        :param hidden_dim: dimension of the hidden layer
-        :param act: activation function
-        :param elementwise_affine: whether to use elementwise affine in the layer norm
-        """
-        super().__init__()
-        self.mlp = nn.Sequential(
-            nn.Linear(d_model, hidden_dim),
-            act,
-            nn.Linear(hidden_dim, d_model),
-        )
-        self.layer_norm = nn.LayerNorm(d_model, elementwise_affine=elementwise_affine)
-
-    def forward(self, x):
-        x = x + self.mlp(x)
-        return self.layer_norm(x)
-
-
-class ResidualModel(nn.Module):
-    def __init__(
-        self,
-        vocab_size: Union[int, Iterable],
-        hidden_dim: int,
-        output_dim: int,
-        depth: int = 3,
-    ):
-        """
-        :param vocab_size: number of tokens in the vocabulary, or an Iterable of vocab sizes for each input
-        :param hidden_dim: dimension of the hidden layer
-        :param output_dim: dimension of the output layer
-        :param depth: number of residual blocks
-        """
-
-        super().__init__()
-        if isinstance(vocab_size, int):
-            self.emb = nn.Embedding(vocab_size, hidden_dim)
-        else:
-            self.emb = nn.ModuleList([nn.Embedding(v, hidden_dim) for v in vocab_size])
-
-        self.linear_in = nn.Linear(2 * hidden_dim, hidden_dim)
-        self.residual_blocks = nn.ModuleList(
-            [ResidualBlock(hidden_dim, hidden_dim) for _ in range(depth)]
-        )
-        self.readout = nn.Linear(hidden_dim, output_dim)
-
-    def forward(self, x):  # x: [ batch_size, 2 ]
-        if isinstance(self.emb, Iterable):
-            embs = [self.emb[i](x[:, i]) for i in range(len(self.emb))]
-        else:
-            embs = [self.emb(x[:, i]) for i in range(x.shape[1])]
-
-        x = torch.cat(embs, dim=1)  # [ batch_size, 2 * hidden_dim ]
-        x = self.linear_in(x)  # [ batch_size, hidden_dim ]
-        for block in self.residual_blocks:
-            x = block(x)
-        x = self.readout(x)  # [ batch_size, output_dim ]
-        return x
 
 
 def get_model_fn(config):
@@ -162,11 +104,9 @@ def get_model_fn(config):
         return BaselineModel
     elif config.MODEL == "splitup":
         return SplitupModel
-    elif config.MODEL == "residual":
-        return ResidualModel
     else:
         raise ValueError(
-            f"Unknown model: {config.MODEL}, choose between 'baseline' and 'residual'"
+            f"Unknown model: {config.MODEL}, choose between 'baseline' and 'splitup'"
         )
 
 

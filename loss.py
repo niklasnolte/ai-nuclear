@@ -1,13 +1,31 @@
 import torch
 from torch.nn import functional as F
 from sklearn.preprocessing import QuantileTransformer
+import functools
 import argparse
 import math
+from model import Base
+from typing import Iterable
 
 
 def random_softmax(shape, scale=1):
     x = torch.rand(shape)
     return torch.softmax(scale * x, dim=-1) * x.shape[-1]
+
+
+@functools.lru_cache(maxsize=10)
+def _get_index_distribution(max_idx, exp):
+    dist = torch.arange(1, max_idx + 1) ** exp
+    return dist / dist.sum()
+
+
+def pick_random_index(max_idx, exp=-1):
+    """
+    Pick a random index from 1 to max_idx, with probability proportional to index^exp
+    """
+    base = _get_index_distribution(max_idx, exp)
+    sample = torch.multinomial(base, 1)
+    return sample + 1
 
 
 def weight_by_task(output_map: dict, args: argparse.Namespace) -> torch.Tensor:
@@ -59,7 +77,27 @@ def loss_by_task(
     return loss
 
 
-def get_balanced_accuracy(output: torch.Tensor, target: torch.Tensor):
+def regularize_embedding_dim(
+    model: Base,
+    X: torch.Tensor,
+    Y: torch.Tensor,
+    output_map: dict,
+    config: argparse.Namespace,
+) -> torch.Tensor:
+    idx = pick_random_index(model.hidden_dim, config.DIMREG_EXP)
+    embs = []
+    for emb in model.emb:
+        # Vt is d_model by d_model. Projecting A -> A @ V @ Vt = USVtVVt = USVt
+        _, _, Vt = torch.linalg.svd(emb, full_matrices=False)
+        Vt = Vt[:idx]  # [ idx, d_model]
+        # squueze out the embedding dimension
+        embs.append(emb @ Vt.T @ Vt)
+    out = model.forward_with_embeddings(X, embs)
+    loss = loss_by_task(out, Y, output_map, config)
+    return loss
+
+
+def get_balanced_accuracy(output: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
     """
     output: [batch_size, output_dim]
     target: [batch_size]

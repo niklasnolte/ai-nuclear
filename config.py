@@ -12,13 +12,22 @@ class Task(Enum):
             LR=[1e-1],
             EPOCHS=[100000],
             TRAIN_FRAC=[0.8],
-            HIDDEN_DIM=[512],
+            HIDDEN_DIM=[64],
             SEED=[0, 1, 2],
             RANDOM_WEIGHTS=[0.1, 0.], # level of entropy in randomness. 0 is uniform. 1000 is random one hot.
+            DIMREG_COEFF=[2],
+            DIMREG_EXP=[-1.5], # power to weight indices in dimn regularization
             TARGETS_CLASSIFICATION=[
+                {},
                 {"stability": 1, "parity": 1, "spin": 1, "isospin": 1},
             ],
             TARGETS_REGRESSION=[
+                {
+                    "z": 1,
+                    "n": 1,
+                    "binding_energy": 1,
+                    "radius": 1,
+                },
                 {
                     "z": 1,
                     "n": 1,
@@ -66,6 +75,8 @@ class Task(Enum):
             HIDDEN_DIM=[32],
             SEED=[0],
             RANDOM_WEIGHTS=[10],
+            DIMREG_COEFF=[0,2],
+            DIMREG_EXP=[-1.5], # power to weight indices in dimn regularization
             TARGETS_CLASSIFICATION=[
                 {"stability": 1, "parity": 1, "spin": 1, "isospin": 1},
             ],

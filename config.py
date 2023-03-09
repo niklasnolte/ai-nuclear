@@ -48,14 +48,17 @@ class Task(Enum):
 
     MODULAR = serialize_elements_in_task(
         dict(
-            WD=[5e-2],
-            LR=[1e-1],
+            MODEL=["splitup", "baseline"],
+            WD=[5e-2, 5e-3, 1e-1],
+            LR=[1e-1, 1e-2],
             EPOCHS=[50000],
-            TRAIN_FRAC=[0.5],
+            TRAIN_FRAC=[0.6],
             HIDDEN_DIM=[64],
             SEED=[0, 1, 2],
-            P = [53, 97],
-            MODEL=["baseline"],
+            RANDOM_WEIGHTS=[0.], # level of entropy in randomness. 0 is uniform. 1000 is random one hot.
+            P = [53],
+            DIMREG_COEFF=[2],
+            DIMREG_EXP=[-1.5], # power to weight indices in dimn regularization
             TARGETS_CLASSIFICATION=[
               {"add": 1, "subtract": 1},
               {"add": 1, "multiply": 1},

@@ -3,12 +3,17 @@ import tqdm
 import torch
 import argparse
 import wandb
-from data import prepare_nuclear_data, train_test_split
+from data import prepare_nuclear_data, train_test_split, prepare_modular_data
 from model import get_model_and_optim
 from loss import loss_by_task, metric_by_task, weight_by_task, random_softmax, regularize_embedding_dim
+from config import Task
 
-def train_FULL(args: argparse.Namespace, basedir: str):
-    data = prepare_nuclear_data(args)
+def train_FULL(task: Task, args: argparse.Namespace, basedir: str):
+    if task == Task.FULL or task == Task.DEBUG:
+      data = prepare_nuclear_data(args)
+    elif task == Task.MODULAR:
+      data = prepare_modular_data(args)
+
     DEVICE = args.DEV
     train_mask, test_mask = train_test_split(
         data, train_frac=args.TRAIN_FRAC, seed=args.SEED

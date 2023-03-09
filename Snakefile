@@ -22,8 +22,8 @@ rule all:
 
 rule modular:
   input:
-      expand(Locations.FULL_model,
-              **config.Task.FULL.value)
+      expand(Locations.MODULAR_model,
+              **config.Task.MODULAR.value)
 
 rule debug:
   input:

@@ -276,7 +276,10 @@ def prepare_modular_data(args : argparse.Namespace):
   )
 
 
-def train_test_split(data, train_frac, seed=1):
+def train_test_split_exact(data, train_frac, seed=1):
+    """
+    Take exactly train_frac of the data as training data.
+    """
     # TODO shuffle data when using SGD
     device = data.X.device
     torch.manual_seed(seed)
@@ -286,3 +289,14 @@ def train_test_split(data, train_frac, seed=1):
     test_mask = ~train_mask
     return train_mask.to(device), test_mask.to(device)
 
+def train_test_split_sampled(data, train_frac, seed=1):
+    """
+    Samples are assigned to train by a bernoulli distribution with probability train_frac.
+    """
+    device = data.X.device
+    torch.manual_seed(seed)
+    train_mask = torch.rand(data.X.shape[0]) < train_frac
+    test_mask = ~train_mask
+    return train_mask.to(device), test_mask.to(device)
+
+train_test_split = train_test_split_sampled

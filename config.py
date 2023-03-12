@@ -6,18 +6,20 @@ class Task(Enum):
     # make sure that the tasks don't have exactly the same config
     # otherwise enum is a poopy head
     FULL = serialize_elements_in_task(
+        # FULL_dimnreg2_pcaalpha-1.5_wd0.003_lr0.1_epochs30000_trainfrac0.8_hiddendim256_seed1_modelbaseline_targetsclassificationNone_targetsregressionz:1-n:1-binding_energy:1-radius:1
         dict(
-            MODEL=["splitup", "baseline"],
-            WD=[1e-2, 1e-1],
-            LR=[1e-1, 1e-2, 1e-3],
-            EPOCHS=[100000],
-            TRAIN_FRAC=[0.5],
+            MODEL=["baseline", "splitup"],
+            WD=[3e-3, 1e-2],
+            LR=[1e-1, 1e-1, 1e-3],
+            EPOCHS=[30000],
+            TRAIN_FRAC=[0.8],
             HIDDEN_DIM=[256],
-            SEED=[0, 1, 2],
-            RANDOM_WEIGHTS=[0.], # level of entropy in randomness. 0 is uniform. 1000 is random one hot.
-            P = [53],
-            DIMREG_COEFF=[2., .5, 0],
-            DIMREG_EXP=[-1.5, -1.], # power to weight indices in dimn regularization
+            SEED=[1,0,2],
+            RANDOM_WEIGHTS=[
+                0.0
+            ],  # level of entropy in randomness. 0 is uniform. 1000 is random one hot.
+            DIMREG_COEFF=[0., 0.5],
+            DIMREG_EXP=[-1.5],  # power to weight indices in dimn regularization
             TARGETS_CLASSIFICATION=[
                 {},
                 {"stability": 1, "parity": 1, "spin": 1, "isospin": 1},
@@ -49,23 +51,28 @@ class Task(Enum):
 
     MODULAR = serialize_elements_in_task(
         dict(
-            MODEL=["splitup", "baseline"],
-            WD=[5e-2, 5e-3, 1e-1],
-            LR=[1e-1, 1e-2, 1e-3],
+            MODEL=["baseline"],
+            WD=[5e-3, 5e-2, 1e-1],
+            LR=[1e-2, 1e-3, 1e-1],
             EPOCHS=[100000],
             TRAIN_FRAC=[0.5],
             HIDDEN_DIM=[64, 128, 256],
             SEED=[0, 1, 2],
-            RANDOM_WEIGHTS=[0., .1], # level of entropy in randomness. 0 is uniform. 1000 is random one hot.
-            P = [53],
-            DIMREG_COEFF=[2., 1., .5],
-            DIMREG_EXP=[-1.5, -1.], # power to weight indices in dimn regularization
+            RANDOM_WEIGHTS=[
+                0.0,
+                0.1,
+            ],  # level of entropy in randomness. 0 is uniform. 1000 is random one hot.
+            P=[53],
+            DIMREG_COEFF=[2.0, 1.0, 0.5],
+            DIMREG_EXP=[-1.5, -1.0],  # power to weight indices in dimn regularization
             TARGETS_CLASSIFICATION=[
-              {"add": 1, "subtract": 1},
-              {"add": 1, "multiply": 1},
-              {"add": 1, "subtract": 1, "multiply": 1},
-              ],
-            TARGETS_REGRESSION=[{},],
+                {"add": 1, "subtract": 1},
+                {"add": 1, "multiply": 1},
+                {"add": 1, "subtract": 1, "multiply": 1},
+            ],
+            TARGETS_REGRESSION=[
+                {},
+            ],
         )
     )
 
@@ -79,8 +86,8 @@ class Task(Enum):
             HIDDEN_DIM=[32],
             SEED=[0],
             RANDOM_WEIGHTS=[10],
-            DIMREG_COEFF=[0.,2.],
-            DIMREG_EXP=[-1.5], # power to weight indices in dimn regularization
+            DIMREG_COEFF=[0.0, 2.0],
+            DIMREG_EXP=[-1.5],  # power to weight indices in dimn regularization
             TARGETS_CLASSIFICATION=[
                 {"stability": 1, "parity": 1, "spin": 1, "isospin": 1},
             ],

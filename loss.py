@@ -5,7 +5,6 @@ import functools
 import argparse
 import math
 from model import Base
-from typing import Iterable
 
 
 def random_softmax(shape, scale=1):
@@ -88,7 +87,10 @@ def regularize_embedding_dim(
     embs = []
     for emb in model.emb:
         # Vt is d_model by d_model. Projecting A -> A @ V @ Vt = USVtVVt = USVt
-        _, _, Vt = torch.linalg.svd(emb, full_matrices=False)
+        try:
+          _, _, Vt = torch.linalg.svd(emb, full_matrices=False)
+        except torch.linalg.LinAlgError: # sometimes svd fails with singular matrix
+          return torch.zeros(1, device=X.device)
         Vt = Vt[:idx]  # [ idx, d_model]
         # squueze out the embedding dimension
         embs.append(emb @ Vt.T @ Vt)

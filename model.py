@@ -15,6 +15,8 @@ class Base(nn.Module):
           vocab_size = [vocab_size]
       self.emb = nn.ParameterList([nn.Embedding(v, hidden_dim).weight for v in vocab_size])
       self.hidden_dim = hidden_dim
+      for emb in self.emb:
+        emb.data.uniform_(-1, 1)
 
     def forward_with_embeddings(self, x, embs):
         # x = self.embed_input(x, embs)
@@ -187,5 +189,6 @@ def get_model_and_optim(data: Data, config):
         output_dim=output_dim,
     )
     model = make_mup(model_fn, hidden_dim=config.HIDDEN_DIM).to(config.DEV)
+    # model = model_fn(hidden_dim=config.HIDDEN_DIM).to(config.DEV)
     optimizer = mup.MuAdamW(model.parameters(), lr=config.LR, weight_decay=config.WD)
     return model, optimizer

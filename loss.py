@@ -28,6 +28,23 @@ def pick_random_index(max_idx, exp=-1):
     return sample + 1
 
 
+class WeightScaler(torch.nn.Module):
+    def __init__(self, shape, scale=1, trainable=False):
+        super().__init__()
+        self.weights = torch.nn.Parameter(torch.rand(shape), requires_grad=trainable)
+        self.scale = scale
+        self.trainable = trainable
+        self.shape = shape
+
+    def get_weights(self):
+        if self.trainable:
+            return torch.softmax(self.weights, dim=-1) * self.shape[-1]
+        return self.random_softmax(self.weights.shape, scale=self.scale)
+
+    def random_softmax(self, shape=None, scale=None):
+        shape = shape if shape is not None else self.weights.shape
+        scale = scale if scale is not None else self.scale
+        return random_softmax(shape, scale)
 
 def random_softmax(shape, scale=1):
     x = torch.rand(shape)

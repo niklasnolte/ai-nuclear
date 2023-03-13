@@ -1,9 +1,50 @@
 import torch
 from torch.nn import functional as F
 from sklearn.preprocessing import QuantileTransformer
+import functools
 import argparse
 import math
+import unittest
+from model import Base
 
+
+def random_softmax(shape, scale=1):
+    x = torch.rand(shape)
+    return torch.softmax(scale * x, dim=-1) * x.shape[-1]
+
+
+@functools.lru_cache(maxsize=10)
+def _get_index_distribution(max_idx, exp):
+    dist = torch.arange(1, max_idx + 1) ** exp
+    return dist / dist.sum()
+
+
+def pick_random_index(max_idx, exp=-1):
+    """
+    Pick a random index from 1 to max_idx, with probability proportional to index^exp
+    """
+    base = _get_index_distribution(max_idx, exp)
+    sample = torch.multinomial(base, 1)
+    return sample + 1
+
+
+class WeightScaler(torch.nn.Module):
+    def __init__(self, shape, scale=1, trainable=False):
+        super().__init__()
+        self.weights = torch.nn.Parameter(torch.rand(shape), requires_grad=trainable)
+        self.scale = scale
+        self.trainable = trainable
+        self.shape = shape
+
+    def get_weights(self):
+        if self.trainable:
+            return torch.softmax(self.weights, dim=-1) * self.shape[-1]
+        return self.random_softmax(self.weights.shape, scale=self.scale)
+
+    def random_softmax(self, shape=None, scale=None):
+        shape = shape if shape is not None else self.weights.shape
+        scale = scale if scale is not None else self.scale
+        return random_softmax(shape, scale)
 
 def random_softmax(shape, scale=1):
     x = torch.rand(shape)
@@ -59,7 +100,30 @@ def loss_by_task(
     return loss
 
 
-def get_balanced_accuracy(output: torch.Tensor, target: torch.Tensor):
+def regularize_embedding_dim(
+    model: Base,
+    X: torch.Tensor,
+    Y: torch.Tensor,
+    output_map: dict,
+    config: argparse.Namespace,
+) -> torch.Tensor:
+    idx = pick_random_index(model.hidden_dim, config.DIMREG_EXP)
+    embs = []
+    for emb in model.emb:
+        # Vt is d_model by d_model. Projecting A -> A @ V @ Vt = USVtVVt = USVt
+        try:
+          _, _, Vt = torch.linalg.svd(emb, full_matrices=False)
+        except torch.linalg.LinAlgError: # sometimes svd fails with singular matrix
+          return torch.zeros(1, device=X.device)
+        Vt = Vt[:idx]  # [ idx, d_model]
+        # squeeze out the embedding dimension
+        embs.append(emb @ Vt.T @ Vt)
+    out = model.forward_with_embeddings(X, embs)
+    loss = loss_by_task(out, Y, output_map, config)
+    return loss
+
+
+def get_balanced_accuracy(output: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
     """
     output: [batch_size, output_dim]
     target: [batch_size]
@@ -135,48 +199,44 @@ def metric_by_task(
     return metrics
 
 
-def test_loss_by_task():
-    output = torch.tensor([[0.1, 0.9, 0.1], [0.9, 0.1, 0.9]])
-    targets = torch.tensor([[1.0, 0.0], [0.0, 1.0]])
-    output_map = {"a": 2, "b": 1}
-    config = argparse.Namespace()
-    config.TARGETS_CLASSIFICATION = ["a"]
-    config.TARGETS_REGRESSION = ["b"]
-    loss = loss_by_task(output, targets, output_map, config)
-    assert loss.shape == (2,)
-    assert loss[0] == F.cross_entropy(output[:, :2], targets[:, 0].long())
-    assert loss[1] == F.mse_loss(output[:, 2], targets[:, 1].float())
-    print("test_loss_by_task passed")
+class TestMetrics(unittest.TestCase):
+    def test_loss_by_task(self):
+        output = torch.tensor([[0.1, 0.9, 0.1], [0.9, 0.1, 0.9]])
+        targets = torch.tensor([[1.0, 0.0], [0.0, 1.0]])
+        output_map = {"a": 2, "b": 1}
+        config = argparse.Namespace()
+        config.TARGETS_CLASSIFICATION = ["a"]
+        config.TARGETS_REGRESSION = ["b"]
+        loss = loss_by_task(output, targets, output_map, config)
+        self.assertEqual(loss.shape, (2,))
+        self.assertEqual(loss[0], F.cross_entropy(output[:, :2], targets[:, 0].long()))
+        self.assertEqual(loss[1], F.mse_loss(output[:, 2], targets[:, 1].float()))
 
+    def test_get_balanced_accuracy(self):
+        # test with class weights that are not uniform
+        output = torch.tensor([[0.1, 0.9], [0.9, 0.1], [0.1, 0.9]])
+        targets = torch.tensor([1.0, 1.0, 0.0])
+        acc = get_balanced_accuracy(output, targets)
+        self.assertEqual(acc.item(), 0.25)
 
-def test_get_balanced_accuracy():
-    # test with class weights that are not uniform
-    output = torch.tensor([[0.1, 0.9], [0.9, 0.1], [0.1, 0.9]])
-    targets = torch.tensor([1.0, 1.0, 0.0])
-    acc = get_balanced_accuracy(output, targets)
-    assert math.isclose(acc.item(), 0.25)
-    print("test_get_accuracy passed")
+    def test_metric_by_task(self):
+        # test metrics with class weights that are not uniform
 
-
-def test_metric_by_task():
-    # test metrics with class weights that are not uniform
-
-    output = torch.tensor([[0.1, 0.9, 0.1], [0.9, 0.1, 0.9]])
-    targets = torch.tensor([[1.0, 0.0], [0.0, 1.0]])
-    output_map = {"a": 2, "b": 1}
-    config = argparse.Namespace()
-    config.TARGETS_CLASSIFICATION = ["a"]
-    config.TARGETS_REGRESSION = ["b"]
-    metrics = metric_by_task(output, targets, output_map, config)
-    assert metrics.shape == (2,)
-    assert metrics[0] == 100 * get_balanced_accuracy(
-        output[:, :2], targets[:, 0].long()
-    )
-    assert metrics[1] == F.mse_loss(output[:, 2], targets[:, 1].float()).sqrt()
-    print("test_metric_by_task passed")
+        output = torch.tensor([[0.1, 0.9, 0.1], [0.9, 0.1, 0.9]])
+        targets = torch.tensor([[1.0, 0.0], [0.0, 1.0]])
+        output_map = {"a": 2, "b": 1}
+        config = argparse.Namespace()
+        config.TARGETS_CLASSIFICATION = ["a"]
+        config.TARGETS_REGRESSION = ["b"]
+        metrics = metric_by_task(output, targets, output_map, config)
+        self.assertEqual(metrics.shape, (2,))
+        self.assertEqual(
+            metrics[0], 100 * get_balanced_accuracy(output[:, :2], targets[:, 0].long())
+        )
+        self.assertEqual(
+            metrics[1], F.mse_loss(output[:, 2], targets[:, 1].float()).sqrt()
+        )
 
 
 if __name__ == "__main__":
-    test_loss_by_task()
-    test_get_balanced_accuracy()
-    test_metric_by_task()
+    unittest.main(argv=[""], verbosity=2, exit=False)

@@ -26,10 +26,7 @@ if args.WANDB:
     wandb.save("loss.py")
     wandb.save("model.py")
     wandb.save("data.py")
-    if TASK == Task.FULL or TASK == Task.DEBUG:
-      wandb.save("train_full.py")
-    elif TASK == Task.MODULAR:
-      wandb.save("train_modular.py")
+    wandb.save("train_full.py")
 
 # remove old models
 # FIXME should we really do that?
@@ -38,7 +35,5 @@ for f in os.listdir(basedir):
         os.remove(os.path.join(basedir, f))
 
 
-if TASK == Task.FULL or TASK == Task.DEBUG:
-    train_FULL(args, basedir)
-elif TASK == Task.MODULAR:
-    train_MODULAR(args, basedir)
+if TASK == Task.FULL or TASK == Task.DEBUG or TASK == Task.MODULAR:
+    train_FULL(TASK, args, basedir)

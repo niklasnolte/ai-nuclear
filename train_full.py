@@ -55,7 +55,8 @@ def train(task: Task, args: argparse.Namespace, basedir: str):
           dimreg = regularize_embedding_dim(model, data.X[train_mask], data.y[train_mask], data.output_map, args)
           train_loss += args.DIMREG_COEFF * dimreg
 
-        train_loss.mean().backward()
+        train_loss = train_loss.mean()
+        train_loss.backward()
         optimizer.step()
 
         if epoch % args.LOG_FREQ == 0:

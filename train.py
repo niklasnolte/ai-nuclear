@@ -3,7 +3,7 @@ import os
 import wandb
 from config import Task
 from config_utils import parse_arguments_and_get_name
-from train_full import train_FULL
+from train_full import train
 
 # load TASK from env
 TASK = Task[os.environ.get("TASK")]
@@ -35,4 +35,4 @@ for f in os.listdir(basedir):
 
 
 if TASK == Task.FULL or TASK == Task.DEBUG or TASK == Task.MODULAR:
-    train_FULL(TASK, args, basedir)
+    train(TASK, args, basedir)

@@ -4,7 +4,6 @@ import wandb
 from config import Task
 from config_utils import parse_arguments_and_get_name
 from train_full import train_FULL
-from train_modular import train_MODULAR
 
 # load TASK from env
 TASK = Task[os.environ.get("TASK")]

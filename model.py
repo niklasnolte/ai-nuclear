@@ -5,6 +5,7 @@ import mup
 import warnings
 from typing import Callable, Union, Iterable
 from data import Data
+from transformer import FilteredAttentionTransformer
 
 class Base(nn.Module):
     def __init__(
@@ -106,6 +107,8 @@ def get_model_fn(config):
         return BaselineModel
     elif config.MODEL == "splitup":
         return SplitupModel
+    elif config.MODEL == "transformer":
+        return FilteredAttentionTransformer
     else:
         raise ValueError(
             f"Unknown model: {config.MODEL}, choose between 'baseline' and 'splitup'"
@@ -167,6 +170,7 @@ def make_mup(model_fn: Callable, **scale_kwargs) -> nn.Module:
     base = model_fn(**base_kwargs)
     delta = model_fn(**delta_kwargs)
     model = model_fn(**scale_kwargs)
+    breakpoint()
     mup.set_base_shapes(model, base, delta=delta)
     del base, delta
     for name, param in model.named_parameters():
@@ -177,7 +181,7 @@ def make_mup(model_fn: Callable, **scale_kwargs) -> nn.Module:
 
 def get_model_and_optim(data: Data, config):
     # set up model
-    if config.MODEL == "splitup":
+    if config.MODEL == "splitup" or config.MODEL == "transformer":
         output_dim = list(data.output_map.values())
     else:
         output_dim = sum(data.output_map.values())
@@ -188,7 +192,9 @@ def get_model_and_optim(data: Data, config):
         vocab_size=data.vocab_size,
         output_dim=output_dim,
     )
-    model = make_mup(model_fn, hidden_dim=config.HIDDEN_DIM).to(config.DEV)
-    # model = model_fn(hidden_dim=config.HIDDEN_DIM).to(config.DEV)
-    optimizer = mup.MuAdamW(model.parameters(), lr=config.LR, weight_decay=config.WD, amsgrad=True)
+    # model = make_mup(model_fn, hidden_dim=config.HIDDEN_DIM).to(config.DEV)
+    model = model_fn(hidden_dim=config.HIDDEN_DIM).to(config.DEV)
+    # optimizer = mup.MuAdamW(model.parameters(), lr=config.LR, weight_decay=config.WD, amsgrad=True)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=config.LR, weight_decay=config.WD, amsgrad=True)
     return model, optimizer
+ 

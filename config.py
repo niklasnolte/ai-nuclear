@@ -13,7 +13,9 @@ class Task(Enum):
             LR=[1e-1, 1e-2],
             EPOCHS=[10000],
             TRAIN_FRAC=[0.8],
-            HIDDEN_DIM=[512],
+            HIDDEN_DIM=[32],
+            DIMREG_COEFF=[0, 2.0, 1.0, 0.5],
+            DIMREG_EXP=[-1.5, -1.0],  # power to weight indices in dimn regularization
             SEED=[0, 1, 2],
             RANDOM_WEIGHTS=[0.1, 0.], # level of entropy in randomness. 0 is uniform. 1000 is random one hot.
             TARGETS_CLASSIFICATION=[

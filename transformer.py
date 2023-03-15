@@ -6,6 +6,8 @@ from matplotlib import pyplot as plt
 from typing import Iterable, Union
 from mup import MuReadout
 
+
+
 # encoder only transformer implementation
 # Start with two embeddings for x and y
 # Two input streams: x and y
@@ -21,7 +23,7 @@ from mup import MuReadout
 
 
 class FilteredAttentionTransformer(nn.Module):
-    def __init__(self, vocab_size, hidden_dim, output_dim, stacks=2, heads=5, mlp_dim=128, dropout=0.1):
+    def __init__(self, vocab_size, hidden_dim, output_dim, filters=5, stacks=2, heads=4, mlp_dim=128, dropout=0.1):
         super().__init__()
         self.d_model = hidden_dim
         self.stacks = stacks
@@ -30,11 +32,15 @@ class FilteredAttentionTransformer(nn.Module):
         self.dropout = dropout
         self.sequence_length = len(vocab_size)
         self.hidden_dim = hidden_dim
+        self.filters = filters
 
         self.emb = nn.ModuleList([nn.Embedding(vocab_size, self.d_model) for vocab_size in vocab_size])
-        self.expander = Expander(self.d_model, mlp_dim, heads, dropout=dropout)
-        self.blocks = nn.ModuleList([AttentionBlock(self.d_model, heads, mlp_dim, dropout) for _ in range(stacks)])
-        self.readout = Readout(self.d_model, output_dim, sequence_length=self.sequence_length, dropout=dropout, heads=heads)
+        self.expander = Expander(self.d_model, mlp_dim, filters, dropout=dropout)
+        # self.blocks = nn.ModuleList([AttentionBlock(self.d_model, heads, mlp_dim, dropout) for _ in range(stacks)])
+        self.blocks = nn.ModuleList([nn.TransformerEncoderLayer(self.d_model, nhead=heads, dim_feedforward=mlp_dim, dropout=dropout, batch_first=True) for _ in range(stacks)])
+        # self.blocks = nn.ModuleList([nn.Linear(self.d_model, self.d_model) for _ in range(stacks)])
+        # self.readout = nn.Linear(self.d_model * filters * self.sequence_length, sum(output_dim))
+        self.readout = Readout(self.d_model, output_dim, dropout=dropout)
     
         print(sum(p.numel() for p in self.parameters() if p.requires_grad))
 
@@ -44,7 +50,7 @@ class FilteredAttentionTransformer(nn.Module):
     
     def forward_with_embeddings(self, x, embs):
         x = self.embed_input(x, embs)
-        x = self.expander(x)
+        x = self.expander(x) # [batch_size, sequence_length * filters, d_model]
         for block in self.blocks:
             x = block(x)
         return self.readout(x) 
@@ -59,26 +65,27 @@ class FilteredAttentionTransformer(nn.Module):
 
 
 class Expander(nn.Module):
-    def __init__(self, d_model, mlp_dim, heads=5, depth=2, dropout=0):
+    def __init__(self, d_model, mlp_dim, filters, depth=2, dropout=0):
         super().__init__()
-        self.heads = nn.ModuleList([])
-        for _ in range(heads):
+        self.filters = nn.ModuleList([])
+        for _ in range(filters):
             in_dim = d_model
             layers = nn.ModuleList([])
             for _ in range(depth -1):
                 layers.extend([nn.Linear(in_dim, mlp_dim), nn.SiLU(), nn.Dropout(dropout)])
                 in_dim = mlp_dim
             layers.append(nn.Linear(in_dim, d_model))
-            self.heads.append(nn.Sequential(*layers))
+            self.filters.append(nn.Sequential(*layers))
         
     def forward(self, x): # x: [batch_size, sequence_length, d_model]
-        # output: [batch_size, sequence_length, heads, d_model
-        return torch.stack([head(x) for head in self.heads], dim=2)
+        # output: [batch_size, sequence_length * filters, d_model
+        return torch.cat([filter(x) for filter in self.filters], dim=1)
+    
+
     
 class Attention(nn.Module): # across heads and the sequence (i.e. across all features for both proton and neutron)
-    def __init__(self, d_model, heads=5, dropout=0):
+    def __init__(self, d_model, dropout=0):
         super().__init__()
-        self.heads = heads
         self.scale = d_model ** -0.5
         self.dropout = nn.Dropout(dropout)
         self.to_qkv = nn.Linear(d_model, d_model * 3, bias=False)
@@ -97,7 +104,7 @@ class Attention(nn.Module): # across heads and the sequence (i.e. across all fea
     
 
 class AttentionBlock(nn.Module):
-    def __init__(self, d_model, heads=5, mlp_dim=256, dropout=0):
+    def __init__(self, d_model, heads, mlp_dim=256, dropout=0):
         super().__init__()
         self.norm1 = nn.LayerNorm(d_model)
         self.norm2 = nn.LayerNorm(d_model)
@@ -117,23 +124,32 @@ class AttentionBlock(nn.Module):
     
 
 class Readout(nn.Module):
-    def __init__(self, d_model, output_dims: Iterable, sequence_length=2, heads=5, mlp_dim=256, mlp_depth=1, dropout=0):
+    def __init__(self, d_model, output_dims: Iterable, dropout=0):
         super().__init__()
-        self.attn = Attention(d_model, heads, dropout)
-        self.readouts = nn.ModuleList([])
+        self.output_dims = output_dims
+        self.O = nn.Parameter(torch.randn(len(output_dims), d_model))
+        self.to_v = nn.Linear(d_model, len(output_dims) * d_model, bias=False)
+        self.mlps = nn.ModuleList()
         for output_dim in output_dims:
-            in_dim = d_model * sequence_length * heads
-            layers = nn.ModuleList([])
-            for _ in range(mlp_depth -1):
-                layers.extend([nn.Linear(in_dim, mlp_dim), nn.SiLU(), nn.Dropout(dropout)])
-                in_dim = mlp_dim
-            layers.append(nn.Linear(in_dim, output_dim))
-            # layers.append(MuReadout(in_dim, output_dim))
-            self.readouts.append(nn.Sequential(*layers))
+            self.mlps.append(nn.Sequential(
+                nn.Linear(d_model, d_model),
+                nn.Dropout(dropout),
+                nn.SiLU(),
+                nn.Linear(d_model, output_dim)
+            ))
 
-    def forward(self, x): # x: [batch_size, sequence_length, heads, d_model]
-        x = self.attn(x).flatten(1) # [batch_size, sequence_length, heads, d_model]
-        return torch.cat([readout(x) for readout in self.readouts], dim=-1) # [batch_size, sequence_length, sum(output_dims)]
+    
+    def forward(self, x): # x: [batch_size, sequence_length * filters, d_model]
+       a = torch.einsum('od,bfd->bof', self.O, x) # [batch_size, len(output_dim), filters]
+       a = torch.softmax(a, dim=-1) # [batch_size, len(output_dim), filters]
+       v = self.to_v(x).view(*x.shape, len(self.output_dims)) # [batch_size, sequence_length * filters, d_model, len(output_dim)]
+       res = []
+       for i, v in enumerate(v.unbind(dim=-1)):
+            z = self.mlps[i](torch.einsum('bf,bfd->bd', a[:, i], v))
+            res.append(z)
+             
+       return torch.cat(res, dim=-1)
+        
 
 
         

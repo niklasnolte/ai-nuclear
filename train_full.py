@@ -41,7 +41,6 @@ def train(task: Task, args: argparse.Namespace, basedir: str):
             out[train_mask], data.y[train_mask], data.output_map, args
         )
 
-
         if args.RANDOM_WEIGHTS:
             weight_scaler = random_softmax(weights.shape, scale=args.RANDOM_WEIGHTS).to(
                 DEVICE

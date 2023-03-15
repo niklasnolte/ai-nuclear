@@ -194,5 +194,5 @@ def get_model_and_optim(data: Data, config):
     )
     model = make_mup(model_fn, hidden_dim=config.HIDDEN_DIM).to(config.DEV)
     # model = model_fn(hidden_dim=config.HIDDEN_DIM).to(config.DEV)
-    optimizer = mup.MuAdamW(model.parameters(), lr=config.LR, weight_decay=config.WD)
+    optimizer = mup.MuAdamW(model.parameters(), lr=config.LR, weight_decay=config.WD, amsgrad=True)
     return model, optimizer

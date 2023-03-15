@@ -61,7 +61,7 @@ class Task(Enum):
                 0.1,
             ],  # level of entropy in randomness. 0 is uniform. 1000 is random one hot.
             P=[53],
-            DIMREG_COEFF=[2.0, 1.0, 0.5],
+            DIMREG_COEFF=[0., 2.0, 1.0, 0.5],
             DIMREG_EXP=[-1.5, -1.0],  # power to weight indices in dimn regularization
             TARGETS_CLASSIFICATION=[
                 {"add": 1, "subtract": 1},

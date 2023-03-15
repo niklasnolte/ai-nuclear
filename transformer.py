@@ -30,6 +30,8 @@ class FilteredAttentionTransformer(nn.Module):
         self.heads = heads
         self.mlp_dim = mlp_dim
         self.dropout = dropout
+        if not isinstance(vocab_size, Iterable):
+            vocab_size = [vocab_size]
         self.sequence_length = len(vocab_size)
         self.hidden_dim = hidden_dim
         self.filters = filters
@@ -39,8 +41,8 @@ class FilteredAttentionTransformer(nn.Module):
         # self.blocks = nn.ModuleList([AttentionBlock(self.d_model, heads, mlp_dim, dropout) for _ in range(stacks)])
         self.blocks = nn.ModuleList([nn.TransformerEncoderLayer(self.d_model, nhead=heads, dim_feedforward=mlp_dim, dropout=dropout, batch_first=True) for _ in range(stacks)])
         # self.blocks = nn.ModuleList([nn.Linear(self.d_model, self.d_model) for _ in range(stacks)])
-        # self.readout = nn.Linear(self.d_model * filters * self.sequence_length, sum(output_dim))
-        self.readout = Readout(self.d_model, output_dim, dropout=dropout)
+        self.readout = nn.Linear(self.d_model * filters * 2, sum(output_dim))
+        # self.readout = Readout(self.d_model, output_dim, dropout=dropout)
     
         print(sum(p.numel() for p in self.parameters() if p.requires_grad))
 
@@ -53,7 +55,8 @@ class FilteredAttentionTransformer(nn.Module):
         x = self.expander(x) # [batch_size, sequence_length * filters, d_model]
         for block in self.blocks:
             x = block(x)
-        return self.readout(x) 
+        # return self.readout(x) 
+        return self.readout(x.flatten(1))
     
     def embed_input(self, x, embs):
         if len(embs) == 1:

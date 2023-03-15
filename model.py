@@ -170,7 +170,6 @@ def make_mup(model_fn: Callable, **scale_kwargs) -> nn.Module:
     base = model_fn(**base_kwargs)
     delta = model_fn(**delta_kwargs)
     model = model_fn(**scale_kwargs)
-    breakpoint()
     mup.set_base_shapes(model, base, delta=delta)
     del base, delta
     for name, param in model.named_parameters():

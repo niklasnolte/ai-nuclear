@@ -2,18 +2,23 @@ import os
 import tqdm
 import torch
 import argparse
-import wandb
 from data import prepare_nuclear_data, train_test_split, prepare_modular_data
 from model import get_model_and_optim
-from loss import loss_by_task, metric_by_task, weight_by_task, random_softmax, regularize_embedding_dim
+from loss import (
+    loss_by_task,
+    metric_by_task,
+    weight_by_task,
+    random_softmax,
+    regularize_embedding_dim,
+)
 from config import Task
+
 
 def train(task: Task, args: argparse.Namespace, basedir: str):
     if task == Task.FULL or task == Task.DEBUG:
-      data = prepare_nuclear_data(args)
+        data = prepare_nuclear_data(args)
     elif task == Task.MODULAR:
-      data = prepare_modular_data(args)
-
+        data = prepare_modular_data(args)
 
     best_model = None
     best_loss = float("inf")
@@ -25,7 +30,8 @@ def train(task: Task, args: argparse.Namespace, basedir: str):
 
     model, optimizer = get_model_and_optim(data, args)
     if args.WANDB:
-      wandb.config.update({"n_params": sum(p.numel() for p in model.parameters())})
+        import wandb
+        wandb.config.update({"n_params": sum(p.numel() for p in model.parameters())})
     weights = weight_by_task(data.output_map, args)
     if not args.WANDB:
         bar = tqdm.trange(args.EPOCHS)
@@ -51,8 +57,10 @@ def train(task: Task, args: argparse.Namespace, basedir: str):
         train_loss = weights * train_losses * weight_scaler
 
         if args.DIMREG_COEFF > 0:
-          dimreg = regularize_embedding_dim(model, data.X[train_mask], data.y[train_mask], data.output_map, args)
-          train_loss += args.DIMREG_COEFF * dimreg
+            dimreg = regularize_embedding_dim(
+                model, data.X[train_mask], data.y[train_mask], data.output_map, args
+            )
+            train_loss += args.DIMREG_COEFF * dimreg
 
         train_loss = train_loss.mean()
         train_loss.backward()
@@ -87,8 +95,9 @@ def train(task: Task, args: argparse.Namespace, basedir: str):
                         wandb.run.summary["best_val_loss"] = best_loss.item()
                         wandb.run.summary["best_epoch"] = epoch
                         for i, target in enumerate(data.output_map.keys()):
-                            wandb.run.summary[f"best_val_{target}"] = val_metrics[i].item()
-
+                            wandb.run.summary[f"best_val_{target}"] = val_metrics[
+                                i
+                            ].item()
 
                 if args.WANDB:
                     for i, target in enumerate(data.output_map.keys()):

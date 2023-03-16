@@ -206,17 +206,18 @@ class PosEmbed(Base):
         vocab_size: Union[int, Iterable],
         hidden_dim: int,
         output_dim: Iterable[int],
+        dropout: float = 0.05,
     ):
         super().__init__(vocab_size, hidden_dim)
 
         self.n_tasks = len(output_dim)
         d_model = hidden_dim // self.n_tasks
         emb_size = 8
-        self.pe = PositionalEncoding(emb_size, dropout=0., max_len=200, requires_grad=True)
+        self.pe = PositionalEncoding(emb_size, dropout=0., max_len=200, requires_grad=False)
         self.embed = nn.ModuleList(
             [
                 BinaryEmbedding(
-                    emb_size, dropout=0.0, max_len=vocab, requires_grad=True
+                    emb_size, dropout=dropout, max_len=vocab, requires_grad=True
                 )
                 for vocab in vocab_size
             ]
@@ -232,13 +233,13 @@ class PosEmbed(Base):
                     # nn.LayerNorm(d_model, elementwise_affine=False),
                     # nn.Linear(d_model, d_model),
                     # nn.SiLU(),
-                    ResidualBlock(d_model, dropout=0.0),
-                    ResidualBlock(d_model, dropout=0.0),
-                    ResidualBlock(d_model, dropout=0.0),
-                    ResidualBlock(d_model, dropout=0.0),
-                    ResidualBlock(d_model, dropout=0.0),
-                    ResidualBlock(d_model, dropout=0.0),
-                    ResidualBlock(d_model, dropout=0.0),
+                    ResidualBlock(d_model, dropout=dropout),
+                    ResidualBlock(d_model, dropout=dropout),
+                    ResidualBlock(d_model, dropout=dropout),
+                    ResidualBlock(d_model, dropout=dropout),
+                    ResidualBlock(d_model, dropout=dropout),
+                    ResidualBlock(d_model, dropout=dropout),
+                    ResidualBlock(d_model, dropout=dropout),
                     nn.Linear(d_model, d_model),
                     nn.SiLU(),
                     mup.MuReadout(d_model, od),

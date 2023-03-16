@@ -126,7 +126,7 @@ def get_isospin_from(string):
 
 
 def get_binding_energy_from(df):
-    return df.binding.replace(" ", "nan").astype(float)
+    return df.binding.replace(" ", "nan").astype(float) # * (df.z + df.n)
 
 
 def get_radius_from(df):
@@ -331,7 +331,7 @@ def train_test_split_sampled(data, train_frac, seed=1):
     """
     device = data.X.device
     torch.manual_seed(seed)
-    train_mask = torch.rand(data.X.shape[0]) < train_frac 
+    train_mask = torch.rand(data.X.shape[0]) < train_frac
     test_mask = ~train_mask
     return train_mask.to(device), test_mask.to(device)
 

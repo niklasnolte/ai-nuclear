@@ -34,10 +34,10 @@ def train(task: Task, args: argparse.Namespace, basedir: str):
         wandb.config.update({"n_params": sum(p.numel() for p in model.parameters())})
     weights = weight_by_task(data.output_map, args)
     if not args.WANDB:
-        bar = tqdm.trange(args.EPOCHS)
+        bar = tqdm.trange(args.EPOCHS, )
     else:
         bar = range(args.EPOCHS)
-    for epoch in bar:
+    for epoch in range(args.EPOCHS):
         # Train
         model.train()
         optimizer.zero_grad()
@@ -117,14 +117,32 @@ def train(task: Task, args: argparse.Namespace, basedir: str):
                         },
                         step=epoch,
                     )
+                    wandb.log(
+                        {
+                            "weight_norms": {
+                                name: param.norm().item()
+                                for name, param in model.named_parameters()
+                                if param.requires_grad
+                            }
+                        },
+                        step=epoch,
+                    )
                 else:
                     msg = f"\nEpoch {epoch:<6} Train Losses | Metrics\n"
                     for i, target in enumerate(data.output_map.keys()):
-                        msg += f"{target:>15}: {train_losses[i].item():.2e} | {train_metrics[i].item():.2f}\n"
+                        msg += f"{target:>15}: {train_losses[i].item():.2e} | {train_metrics[i].item():.4f}\n"
                     msg += f"\nEpoch {epoch:<8} Val Losses | Metrics\n"
                     for i, target in enumerate(data.output_map.keys()):
-                        msg += f"{target:>15}: {val_losses[i].item():.2e} | {val_metrics[i].item():.2f}\n"
+                        msg += f"{target:>15}: {val_losses[i].item():.2e} | {val_metrics[i].item():.4f}\n"
+
+                    # print weight norms of the model:
+                    msg += f"\nEpoch {epoch:<8} Weight Norms\n"
+                    for name, param in model.named_parameters():
+                        if param.requires_grad:
+                            msg += f"{name:>20}: {param.norm().item():.2e}\n"
+
                     print(msg)
+                    bar.update(args.EPOCHS // args.LOG_FREQ)
 
         if epoch % args.CKPT_FREQ == 0:
             torch.save(model.state_dict(), os.path.join(basedir, f"model_{epoch}.pt"))

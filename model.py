@@ -5,19 +5,20 @@ import mup
 import warnings
 from typing import Callable, Union, Iterable
 from data import Data
-from transformer import FilteredAttentionTransformer
 
 class Base(nn.Module):
     def __init__(
-        self, vocab_size: Union[int, Iterable], hidden_dim: int
+        self, vocab_size: Union[int, Iterable], hidden_dim: int, embedding_dim: int = None
     ):
       super().__init__()
       if isinstance(vocab_size, int):
           vocab_size = [vocab_size]
-      self.emb = nn.ParameterList([nn.Embedding(v, hidden_dim).weight for v in vocab_size])
+      self.vocab_size = vocab_size
+      self.embedding_dim = embedding_dim or hidden_dim
+      self.emb = nn.ParameterList([nn.Embedding(v, self.embedding_dim).weight for v in self.vocab_size])
       self.hidden_dim = hidden_dim
       for emb in self.emb:
-        emb.data.uniform_(-1, 1)
+        emb.data.uniform_(-1e-3, 1e-3)
 
     def forward_with_embeddings(self, x, embs):
         # x = self.embed_input(x, embs)
@@ -48,7 +49,7 @@ class BaselineModel(Base):
         super().__init__(vocab_size, hidden_dim)
 
         self.nonlinear = nn.Sequential(
-            nn.Linear(2 * hidden_dim, hidden_dim),
+            nn.Linear(len(self.vocab_size) * self.embedding_dim, hidden_dim),
             nn.SiLU(),
             nn.Linear(hidden_dim, hidden_dim),
             nn.SiLU(),
@@ -56,6 +57,7 @@ class BaselineModel(Base):
             nn.SiLU(),
         )
         self.readout = nn.Linear(hidden_dim, output_dim)
+        print(sum(p.numel() for p in self.parameters() if p.requires_grad))
 
     def forward_with_embeddings(self, x, embs):  # embs: [ batch_size, 2 * hidden_dim ]
         x = self.embed_input(x, embs)
@@ -84,7 +86,7 @@ class SplitupModel(Base):
         self.nonlinears = nn.ModuleList(
             [
                 nn.Sequential(
-                    nn.Linear(2 * hidden_dim, d_model),
+                    nn.Linear(len(self.vocab_size) * self.embedding_dim, d_model),
                     nn.SiLU(),
                     nn.LayerNorm(d_model, elementwise_affine=False),
                     nn.Linear(d_model, d_model),
@@ -102,6 +104,9 @@ class SplitupModel(Base):
         )  # [ batch_size, sum(output_dim) ]
 
 
+from transformer import FilteredAttentionTransformer
+from transformer import DefaultTransformer
+
 def get_model_fn(config):
     if config.MODEL == "baseline":
         return BaselineModel
@@ -109,6 +114,8 @@ def get_model_fn(config):
         return SplitupModel
     elif config.MODEL == "transformer":
         return FilteredAttentionTransformer
+    elif config.MODEL == "deftrafo":
+        return DefaultTransformer
     else:
         raise ValueError(
             f"Unknown model: {config.MODEL}, choose between 'baseline' and 'splitup'"
@@ -191,9 +198,9 @@ def get_model_and_optim(data: Data, config):
         vocab_size=data.vocab_size,
         output_dim=output_dim,
     )
-    # model = make_mup(model_fn, hidden_dim=config.HIDDEN_DIM).to(config.DEV)
-    model = model_fn(hidden_dim=config.HIDDEN_DIM).to(config.DEV)
-    # optimizer = mup.MuAdamW(model.parameters(), lr=config.LR, weight_decay=config.WD, amsgrad=True)
-    optimizer = torch.optim.AdamW(model.parameters(), lr=config.LR, weight_decay=config.WD, amsgrad=True)
+    model = make_mup(model_fn, hidden_dim=config.HIDDEN_DIM).to(config.DEV)
+    # model = model_fn(hidden_dim=config.HIDDEN_DIM).to(config.DEV)
+    optimizer = mup.MuAdamW(model.parameters(), lr=config.LR, weight_decay=config.WD, amsgrad=True)
+    #optimizer = torch.optim.AdamW(model.parameters(), lr=config.LR, weight_decay=config.WD, amsgrad=True)
+    # optimizer = torch.optim.AdamW(model, lr=config.LR, amsgrad=True)
     return model, optimizer
- 

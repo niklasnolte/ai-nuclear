@@ -89,7 +89,8 @@ class SplitupModel(Base):
                     nn.LayerNorm(d_model, elementwise_affine=False),
                     nn.Linear(d_model, d_model),
                     nn.SiLU(),
-                    mup.MuReadout(d_model, od),
+                    #mup.MuReadout(d_model, od),
+		    nn.Linear(d_model, od),
                 )
                 for od in output_dim
             ]

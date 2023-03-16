@@ -23,7 +23,7 @@ from mup import MuReadout
 
 
 class FilteredAttentionTransformer(nn.Module):
-    def __init__(self, vocab_size, hidden_dim, output_dim, filters=5, stacks=2, heads=4, mlp_dim=128, dropout=0.1):
+    def __init__(self, vocab_size, hidden_dim, output_dim, filters=4, stacks=2, heads=4, mlp_dim=64, dropout=0.1):
         super().__init__()
         self.d_model = hidden_dim
         self.stacks = stacks

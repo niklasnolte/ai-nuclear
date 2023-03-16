@@ -6,18 +6,21 @@ import warnings
 from typing import Callable, Union, Iterable
 from data import Data
 from transformer import FilteredAttentionTransformer
+import math
+from torch import Tensor
+
 
 class Base(nn.Module):
-    def __init__(
-        self, vocab_size: Union[int, Iterable], hidden_dim: int
-    ):
-      super().__init__()
-      if isinstance(vocab_size, int):
-          vocab_size = [vocab_size]
-      self.emb = nn.ParameterList([nn.Embedding(v, hidden_dim).weight for v in vocab_size])
-      self.hidden_dim = hidden_dim
-      for emb in self.emb:
-        emb.data.uniform_(-1, 1)
+    def __init__(self, vocab_size: Union[int, Iterable], hidden_dim: int):
+        super().__init__()
+        if isinstance(vocab_size, int):
+            vocab_size = [vocab_size]
+        self.emb = nn.ParameterList(
+            [nn.Embedding(v, hidden_dim).weight for v in vocab_size]
+        )
+        self.hidden_dim = hidden_dim
+        for emb in self.emb:
+            emb.data.uniform_(-1, 1)
 
     def forward_with_embeddings(self, x, embs):
         # x = self.embed_input(x, embs)
@@ -33,6 +36,7 @@ class Base(nn.Module):
         else:
             embs = [embs[i][x[:, i]] for i in range(len(embs))]
         return torch.cat(embs, dim=1)  # [ batch_size, 2 * hidden_dim ]
+
 
 class BaselineModel(Base):
     def __init__(
@@ -62,6 +66,7 @@ class BaselineModel(Base):
         x = self.nonlinear(x)  # [ batch_size, hidden_dim ]
         return self.readout(x)  # [ batch_size, output_dim ]
 
+
 class SplitupModel(Base):
     def __init__(
         self,
@@ -89,8 +94,8 @@ class SplitupModel(Base):
                     nn.LayerNorm(d_model, elementwise_affine=False),
                     nn.Linear(d_model, d_model),
                     nn.SiLU(),
-                    #mup.MuReadout(d_model, od),
-		    nn.Linear(d_model, od),
+                    mup.MuReadout(d_model, od),
+                    # nn.Linear(d_model, od),
                 )
                 for od in output_dim
             ]
@@ -110,6 +115,161 @@ def get_model_fn(config):
         return SplitupModel
     elif config.MODEL == "transformer":
         return FilteredAttentionTransformer
+    else:
+        raise ValueError(
+            f"Unknown model: {config.MODEL}, choose between 'baseline' and 'splitup'"
+        )
+
+
+class PositionalEncoding(nn.Module):
+    def __init__(
+        self,
+        d_model: int,
+        dropout: float = 0.1,
+        max_len: int = 5000,
+        requires_grad: bool = False,
+    ):
+        super().__init__()
+        self.dropout = nn.Dropout(p=dropout)
+
+        position = torch.arange(max_len).unsqueeze(1)
+        div_term = torch.exp(
+            torch.arange(0, d_model, 2) * (-math.log(10000.0) / d_model)
+        )
+        pe = torch.zeros(max_len, 1, d_model)
+        pe[:, 0, 0::2] = torch.sin(position * div_term)
+        pe[:, 0, 1::2] = torch.cos(position * div_term)
+        # self.pe = nn.Parameter(pe, requires_grad=requires_grad)
+        self.register_buffer("pe", pe)
+
+    def forward(self, x: Tensor) -> Tensor:
+        """
+        Args:
+            x: Tensor, shape [seq_len, batch_size, embedding_dim]
+        """
+        x = self.pe[x]
+        return self.dropout(x)
+
+
+class BinaryEmbedding(nn.Module):
+    def __init__(
+        self,
+        d_model: int,
+        dropout: float = 0.1,
+        max_len: int = 5000,
+        requires_grad: bool = False,
+    ):
+        super().__init__()
+        self.dropout = nn.Dropout(p=dropout)
+        self.embedding = torch.zeros(
+            (max_len, d_model), dtype=torch.float32, requires_grad=False
+        )
+        for i in range(max_len):
+            self.embedding[i] = torch.tensor(
+                [int(x) for x in bin(i)[2:].zfill(d_model)]
+            )
+        self.embedding = nn.Parameter(self.embedding, requires_grad=requires_grad)
+
+    def forward(self, x: Tensor) -> Tensor:
+        """
+        Args:
+            x: Tensor, shape [seq_len, batch_size, embedding_dim]
+        """
+        x = self.embedding[x]
+        return self.dropout(x)
+
+
+class ResidualBlock(nn.Module):
+    def __init__(
+        self, d_model: int, dropout: float = 0.1, activation: nn.Module = nn.SiLU
+    ):
+        super().__init__()
+        self.dropout = nn.Dropout(p=dropout)
+        self.ff = nn.Sequential(
+            nn.Linear(d_model, d_model),
+            activation(),
+            nn.Linear(d_model, d_model),
+        )
+        self.norm = nn.LayerNorm(d_model, elementwise_affine=False)
+
+    def forward(self, x: Tensor) -> Tensor:
+        """
+        Args:
+            x: Tensor, shape [seq_len, batch_size, embedding_dim]
+        """
+        return self.norm(x + self.dropout(self.ff(x)))
+
+
+class PosEmbed(Base):
+    def __init__(
+        self,
+        vocab_size: Union[int, Iterable],
+        hidden_dim: int,
+        output_dim: Iterable[int],
+    ):
+        super().__init__(vocab_size, hidden_dim)
+
+        self.n_tasks = len(output_dim)
+        d_model = hidden_dim // self.n_tasks
+        emb_size = 8
+        self.pe = PositionalEncoding(emb_size, dropout=0., max_len=200, requires_grad=True)
+        self.embed = nn.ModuleList(
+            [
+                BinaryEmbedding(
+                    emb_size, dropout=0.0, max_len=vocab, requires_grad=True
+                )
+                for vocab in vocab_size
+            ]
+        )
+        self.input = nn.Linear(emb_size * 2, hidden_dim)
+        # self.input = nn.Linear(2, hidden_dim)
+
+        self.nonlinears = nn.ModuleList(
+            [
+                nn.Sequential(
+                    nn.Linear(hidden_dim, d_model),
+                    # nn.SiLU(),
+                    # nn.LayerNorm(d_model, elementwise_affine=False),
+                    # nn.Linear(d_model, d_model),
+                    # nn.SiLU(),
+                    ResidualBlock(d_model, dropout=0.0),
+                    ResidualBlock(d_model, dropout=0.0),
+                    ResidualBlock(d_model, dropout=0.0),
+                    ResidualBlock(d_model, dropout=0.0),
+                    ResidualBlock(d_model, dropout=0.0),
+                    ResidualBlock(d_model, dropout=0.0),
+                    ResidualBlock(d_model, dropout=0.0),
+                    nn.Linear(d_model, d_model),
+                    nn.SiLU(),
+                    mup.MuReadout(d_model, od),
+                    # nn.Linear(d_model, od),
+                )
+                for od in output_dim
+            ]
+        )
+
+    def forward_with_embeddings(self, x, embs):  # embs: [ batch_size, 2 * hidden_dim ]
+        # min_ = x.amin(dim=0)
+        # max_ = x.amax(dim=0)
+        # x = (x - min_) / (max_ - min_)
+        pe = self.pe(x).flatten(1)
+        x = [self.embed[i](x[:, i]) for i in range(x.shape[1])]
+        x = torch.cat(x, dim=1)
+        x = self.input(x + pe)
+        return torch.cat(
+            [nl(x) for nl in self.nonlinears], dim=1
+        )  # [ batch_size, sum(output_dim) ]
+
+
+def get_model_fn(config):
+    if config.MODEL == "baseline":
+        return BaselineModel
+    elif config.MODEL == "splitup":
+        return SplitupModel
+    elif config.MODEL == "transformer":
+        return FilteredAttentionTransformer
+    elif config.MODEL == "posembed":
+        return PosEmbed
     else:
         raise ValueError(
             f"Unknown model: {config.MODEL}, choose between 'baseline' and 'splitup'"
@@ -181,10 +341,18 @@ def make_mup(model_fn: Callable, **scale_kwargs) -> nn.Module:
 
 def get_model_and_optim(data: Data, config):
     # set up model
-    if config.MODEL == "splitup" or config.MODEL == "transformer":
+    if config.MODEL == "baseline":
+        output_dim = sum(data.output_map.values())
+    elif (
+        config.MODEL == "splitup"
+        or config.MODEL == "transformer"
+        or config.MODEL == "posembed"
+    ):
         output_dim = list(data.output_map.values())
     else:
-        output_dim = sum(data.output_map.values())
+        raise ValueError(
+            f"Unknown model: {config.MODEL}, choose between 'baseline', 'splitup', 'transformer' and 'posembed'"
+        )
 
     model_fn = get_model_fn(config)
     model_fn = partial(
@@ -192,9 +360,10 @@ def get_model_and_optim(data: Data, config):
         vocab_size=data.vocab_size,
         output_dim=output_dim,
     )
-    # model = make_mup(model_fn, hidden_dim=config.HIDDEN_DIM).to(config.DEV)
-    model = model_fn(hidden_dim=config.HIDDEN_DIM).to(config.DEV)
-    # optimizer = mup.MuAdamW(model.parameters(), lr=config.LR, weight_decay=config.WD, amsgrad=True)
-    optimizer = torch.optim.AdamW(model.parameters(), lr=config.LR, weight_decay=config.WD, amsgrad=True)
+    model = make_mup(model_fn, hidden_dim=config.HIDDEN_DIM).to(config.DEV)
+    # model = model_fn(hidden_dim=config.HIDDEN_DIM).to(config.DEV)
+    optimizer = mup.MuAdamW(
+        model.parameters(), lr=config.LR, weight_decay=config.WD, amsgrad=True
+    )
+    # optimizer = torch.optim.AdamW(model.parameters(), lr=config.LR, weight_decay=config.WD, amsgrad=True)
     return model, optimizer
- 

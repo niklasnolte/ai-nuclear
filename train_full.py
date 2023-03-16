@@ -29,6 +29,7 @@ def train(task: Task, args: argparse.Namespace, basedir: str):
     )
 
     model, optimizer = get_model_and_optim(data, args)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, 1)
     if args.WANDB:
         import wandb
         wandb.config.update({"n_params": sum(p.numel() for p in model.parameters())})
@@ -65,6 +66,7 @@ def train(task: Task, args: argparse.Namespace, basedir: str):
         train_loss = train_loss.mean()
         train_loss.backward()
         optimizer.step()
+        scheduler.step()
 
         if epoch % args.LOG_FREQ == 0:
             with torch.no_grad():

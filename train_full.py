@@ -130,3 +130,4 @@ def train(task: Task, args: argparse.Namespace, basedir: str):
             torch.save(model.state_dict(), os.path.join(basedir, f"model_{epoch}.pt"))
     torch.save(model, os.path.join(basedir, "model_FULL.pt"))
     torch.save(best_model, os.path.join(basedir, "model_FULL_best.pt"))
+    return train_losses, train_metrics, val_losses, val_metrics

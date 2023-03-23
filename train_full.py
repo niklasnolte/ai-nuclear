@@ -142,7 +142,7 @@ def train(task: Task, args: argparse.Namespace, basedir: str):
                             msg += f"{name:>20}: {param.norm().item():.2e}\n"
 
                     print(msg)
-                    bar.update(args.EPOCHS // args.LOG_FREQ)
+                    bar.update(args.LOG_FREQ)
 
         if epoch % args.CKPT_FREQ == 0:
             torch.save(model.state_dict(), os.path.join(basedir, f"model_{epoch}.pt"))

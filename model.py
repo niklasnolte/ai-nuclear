@@ -6,19 +6,23 @@ import warnings
 from typing import Callable, Union, Iterable
 from data import Data
 
+
 class Base(nn.Module):
     def __init__(
-        self, vocab_size: Union[int, Iterable], hidden_dim: int, embedding_dim: int = None
+        self,
+        vocab_size: Union[int, Iterable],
+        hidden_dim: int,
+        embedding_dim: int = None,
     ):
-      super().__init__()
-      if isinstance(vocab_size, int):
-          vocab_size = [vocab_size]
-      self.vocab_size = vocab_size
-      self.embedding_dim = embedding_dim or hidden_dim
-      self.emb = nn.ParameterList([nn.Embedding(v, self.embedding_dim).weight for v in self.vocab_size])
-      self.hidden_dim = hidden_dim
-      for emb in self.emb:
-        emb.data.uniform_(-1e-3, 1e-3)
+        super().__init__()
+        if isinstance(vocab_size, int):
+            vocab_size = [vocab_size]
+        self.vocab_size = vocab_size
+        self.embedding_dim = embedding_dim or hidden_dim
+        self.emb = nn.ParameterList(
+            [nn.Embedding(v, self.embedding_dim).weight for v in self.vocab_size]
+        )
+        self.hidden_dim = hidden_dim
 
     def forward_with_embeddings(self, x, embs):
         # x = self.embed_input(x, embs)
@@ -34,6 +38,28 @@ class Base(nn.Module):
         else:
             embs = [embs[i][x[:, i]] for i in range(len(embs))]
         return torch.cat(embs, dim=1)  # [ batch_size, 2 * hidden_dim ]
+
+
+class ResidualBlock(nn.Module):
+    def __init__(
+        self, d_model: int, dropout: float = 0.0, activation: nn.Module = nn.SiLU
+    ):
+        super().__init__()
+        self.dropout = nn.Dropout(p=dropout)
+        self.ff = nn.Sequential(
+            nn.Linear(d_model, d_model * 2),
+            activation(),
+            nn.Linear(d_model * 2, d_model),
+        )
+        # self.norm = nn.LayerNorm(d_model, elementwise_affine=False)
+        self.norm = nn.BatchNorm1d(d_model, affine=False)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Args:
+            x: Tensor, shape [batch_size, seq_len, d_model]
+        """
+        return self.norm(x + self.dropout(self.ff(x)))
 
 class BaselineModel(Base):
     def __init__(
@@ -51,9 +77,11 @@ class BaselineModel(Base):
         self.nonlinear = nn.Sequential(
             nn.Linear(len(self.vocab_size) * self.embedding_dim, hidden_dim),
             nn.SiLU(),
-            nn.Linear(hidden_dim, hidden_dim),
+            ResidualBlock(hidden_dim, dropout=0),
             nn.SiLU(),
-            nn.Linear(hidden_dim, hidden_dim),
+            ResidualBlock(hidden_dim, dropout=0),
+            nn.SiLU(),
+            ResidualBlock(hidden_dim, dropout=0),
             nn.SiLU(),
         )
         self.readout = nn.Linear(hidden_dim, output_dim)
@@ -63,6 +91,7 @@ class BaselineModel(Base):
         x = self.embed_input(x, embs)
         x = self.nonlinear(x)  # [ batch_size, hidden_dim ]
         return self.readout(x)  # [ batch_size, output_dim ]
+
 
 class SplitupModel(Base):
     def __init__(
@@ -106,6 +135,7 @@ class SplitupModel(Base):
 
 from transformer import FilteredAttentionTransformer
 from transformer import DefaultTransformer
+
 
 def get_model_fn(config):
     if config.MODEL == "baseline":
@@ -180,10 +210,10 @@ def make_mup(model_fn: Callable, **scale_kwargs) -> nn.Module:
     mup.set_base_shapes(model, base, delta=delta)
     del base, delta
     for name, param in model.named_parameters():
-        if "weight" in name.lower():  # FIXME or not
-            mup.init.kaiming_uniform_(param, a=5**0.5)
+        if "weight" in name.lower() or "emb" in name.lower():  # FIXME or not
+            # mup.init.uniform_(param, -.1, .1)
+            mup.init.kaiming_uniform_(param, a=5**0.5, nonlinearity="leaky_relu")
     return model
-
 
 def get_model_and_optim(data: Data, config):
     # set up model
@@ -200,7 +230,17 @@ def get_model_and_optim(data: Data, config):
     )
     model = make_mup(model_fn, hidden_dim=config.HIDDEN_DIM).to(config.DEV)
     # model = model_fn(hidden_dim=config.HIDDEN_DIM).to(config.DEV)
-    optimizer = mup.MuAdamW(model.parameters(), lr=config.LR, weight_decay=config.WD, amsgrad=True)
-    #optimizer = torch.optim.AdamW(model.parameters(), lr=config.LR, weight_decay=config.WD, amsgrad=True)
+    param_groups = [
+        {"params": [p for n, p in model.named_parameters() if "bias" in n.lower()]},
+        {
+            "params": [
+                p for n, p in model.named_parameters() if "bias" not in n.lower()
+            ],
+            "weight_decay": config.WD,
+        },
+    ]
+    optimizer = mup.MuAdamW(param_groups, lr=config.LR, amsgrad=True)
+    # split into weights biases
+    # optimizer = torch.optim.AdamW(param_groups, lr=config.LR, amsgrad=True)
     # optimizer = torch.optim.AdamW(model, lr=config.LR, amsgrad=True)
     return model, optimizer

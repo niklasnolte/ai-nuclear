@@ -126,7 +126,7 @@ def get_isospin_from(string):
 
 
 def get_binding_energy_from(df):
-    return df.binding.replace(" ", "nan").astype(float) # * (df.z + df.n)
+    return df.binding.replace(" ", "nan").astype(float)# * (df.z + df.n)
 
 
 def get_radius_from(df):
@@ -184,7 +184,7 @@ def get_nuclear_data(recreate=False):
     else:
         df = pd.read_csv("data/ground_states.csv")
 
-    df = df[df.z > 15]  # TODO remove this line
+    df = df[(df.z > 8) & (df.n > 8) & (df.n<156)]  # TODO remove this line
     return df
 
 
@@ -224,7 +224,7 @@ def prepare_nuclear_data(config : argparse.Namespace, recreate : bool =False):
 
     reg_columns = list(config.TARGETS_REGRESSION)
     # qt = QuantileTransformer(output_distribution="uniform")
-    feature_transformer = RobustScaler()
+    feature_transformer = StandardScaler()
     if len(reg_columns) > 0:
         targets[reg_columns] = feature_transformer.fit_transform(
             targets[reg_columns].values
@@ -332,6 +332,15 @@ def train_test_split_sampled(data, train_frac, seed=1):
     device = data.X.device
     torch.manual_seed(seed)
     train_mask = torch.rand(data.X.shape[0]) < train_frac
+    # assert that we have each X at least once in the training set
+    while True:
+      for i in range(data.X.shape[1]):
+          if len(data.X[train_mask][:,i].unique()) != len(data.X[:,i].unique()):
+            train_mask = torch.rand(data.X.shape[0]) < train_frac
+            print("Resampling train mask")
+            break
+      else:
+        break
     test_mask = ~train_mask
     return train_mask.to(device), test_mask.to(device)
 

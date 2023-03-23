@@ -29,13 +29,13 @@ def train(task: Task, args: argparse.Namespace, basedir: str):
     )
 
     model, optimizer = get_model_and_optim(data, args)
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, 1)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=10000, eta_min=1e-4)
     if args.WANDB:
         import wandb
         wandb.config.update({"n_params": sum(p.numel() for p in model.parameters())})
     weights = weight_by_task(data.output_map, args)
     if not args.WANDB:
-        bar = tqdm.trange(args.EPOCHS)
+        bar = tqdm.trange(args.EPOCHS, dynamic_ncols=True)
     else:
         bar = range(args.EPOCHS)
     for epoch in bar:
@@ -120,16 +120,18 @@ def train(task: Task, args: argparse.Namespace, basedir: str):
                         step=epoch,
                     )
                 else:
-                    msg = f"\nEpoch {epoch:<6} Train Losses | Metrics\n"
+                    msg = f"Epoch {epoch:<6} Train Losses | Metrics"
                     for i, target in enumerate(data.output_map.keys()):
-                        msg += f"{target:>15}: {train_losses[i].item():.2e} | {train_metrics[i].item():.2f}\n"
-                    msg += f"\nEpoch {epoch:<8} Val Losses | Metrics\n"
+                        msg += f"\n{target:>15}: {train_losses[i].item():.2e} | {train_metrics[i].item():.2f}"
+                    msg += f"\nEpoch {epoch:<8} Val Losses | Metrics"
                     for i, target in enumerate(data.output_map.keys()):
-                        msg += f"{target:>15}: {val_losses[i].item():.2e} | {val_metrics[i].item():.2f}\n"
+                        msg += f"\n{target:>15}: {val_losses[i].item():.2e} | {val_metrics[i].item():.2f}"
                     print(msg)
+                    # desc_bar.set_description_str(msg)
 
         if epoch % args.CKPT_FREQ == 0:
             torch.save(model.state_dict(), os.path.join(basedir, f"model_{epoch}.pt"))
-    torch.save(model, os.path.join(basedir, "model_FULL.pt"))
-    torch.save(best_model, os.path.join(basedir, "model_FULL_best.pt"))
+    if not task != Task.DEBUG: 
+        torch.save(model, os.path.join(basedir, "model_FULL.pt"))
+        torch.save(best_model, os.path.join(basedir, "model_FULL_best.pt"))
     return train_losses, train_metrics, val_losses, val_metrics

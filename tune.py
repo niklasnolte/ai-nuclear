@@ -41,11 +41,17 @@ def bookkeeping(args, name):
 # 1. Define an objective function to be maximized.
 def objective(trial):
     args = _parse_arguments(TASK)
-    args.EPOCHS = 1000
+    # args.WD = trial.suggest_float('WD', 1e-5, 1e-1, log=True)
+    # args.RANDOM_WEIGHTS = trial.suggest_float('RANDOM_WEIGHTS', 0.0, 2.0)
+    args.EPOCHS = 10000
     args.LR = trial.suggest_float('LR', 1e-5, 1e-1, log=True)
     args.WD = trial.suggest_float('WD', 1e-5, 1e-1, log=True)
-    args.HIDDEN_DIM = trial.suggest_int('HIDDEN_DIM', 32, 1024)
-    args.RANDOM_WEIGHTS = trial.suggest_float('RANDOM_WEIGHTS', 0.0, 2.0)
+    # args.betas = (trial.suggest_float('BETA1', 0.9, 1.0), trial.suggest_float('BETA2', 0.9, 1.0))
+    # args.EMB_INIT = trial.suggest_float('EMB_INIT', 1e-5, 1e-1, log=True)
+    # argsDROPOUT = trial.suggest_float('DROPOUT', 0.0, 0.5)
+    # default dim used for tuning is set in model.py in make_mup under base. 
+    # it's assumed to be 32 here.
+    args.HIDDEN_DIM = 32
     name = _get_qualified_name(TASK, args)
     name = "TUNE_" + name
     args, basedir = bookkeeping(args, name)

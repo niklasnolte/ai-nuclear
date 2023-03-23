@@ -3,6 +3,7 @@ import torch
 import torch.nn as nn
 from typing import Iterable
 from model import Base
+import mup
 
 
 # encoder only transformer implementation
@@ -38,11 +39,7 @@ class DefaultTransformer(Base):
       num_layers=nstacks,
     )
 
-    self.readout = nn.Sequential(
-      nn.Linear(self.hidden_dim * self.sequence_length, self.hidden_dim),
-      nn.ReLU(),
-      nn.Linear(self.hidden_dim, output_dim),
-    )
+    self.readout = nn.Linear(self.hidden_dim * self.sequence_length, output_dim)
 
     print(sum(p.numel() for p in self.parameters() if p.requires_grad))
 
@@ -90,8 +87,7 @@ class FilteredAttentionTransformer(Base):
                 for _ in range(nstacks)
             ]
         )
-        self.readout = nn.Linear(self.hidden_dim * nfilters * 2, sum(output_dim))
-        # self.readout = Readout(self.hidden_dim, output_dim, dropout=dropout)
+        self.readout = mup.MuReadout(self.hidden_dim * nfilters * 2, sum(output_dim))
 
         print(sum(p.numel() for p in self.parameters() if p.requires_grad))
 
@@ -101,7 +97,6 @@ class FilteredAttentionTransformer(Base):
         x = self.expander(x)  # [batch_size, sequence_length * nfilters, d_model]
         for block in self.blocks:
             x = block(x) + x
-        # return self.readout(x)
         return self.readout(x.flatten(1))
 
 
@@ -171,39 +166,3 @@ class AttentionBlock(nn.Module):
         x = x + self.attn(self.norm1(x))
         x = x + self.mlp(self.norm2(x))
         return x
-
-
-class Readout(nn.Module):
-    def __init__(self, d_model, output_dims: Iterable, dropout=0):
-        super().__init__()
-        self.output_dims = output_dims
-        self.O = nn.Parameter(torch.randn(len(output_dims), d_model))
-        self.to_v = nn.Linear(d_model, len(output_dims) * d_model, bias=False)
-        self.mlps = nn.ModuleList()
-        for output_dim in output_dims:
-            self.mlps.append(
-                nn.Sequential(
-                    nn.Linear(d_model, d_model),
-                    nn.Dropout(dropout),
-                    nn.SiLU(),
-                    nn.Linear(d_model, output_dim),
-                )
-            )
-
-    def forward(self, x):  # x: [batch_size, sequence_length * nfilters, d_model]
-        a = torch.einsum(
-            "od,bfd->bof", self.O, x
-        )  # [batch_size, len(output_dim), nfilters]
-        a = torch.softmax(a, dim=-1)  # [batch_size, len(output_dim), nfilters]
-        v = self.to_v(x).view(
-            *x.shape, len(self.output_dims)
-        )  # [batch_size, sequence_length * nfilters, d_model, len(output_dim)]
-        res = []
-        for i, v in enumerate(v.unbind(dim=-1)):
-            z = self.mlps[i](torch.einsum("bf,bfd->bd", a[:, i], v))
-            res.append(z)
-
-        return torch.cat(res, dim=-1)
-
-
-# %%

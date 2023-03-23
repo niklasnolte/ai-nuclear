@@ -184,7 +184,7 @@ def get_nuclear_data(recreate=False):
     else:
         df = pd.read_csv("data/ground_states.csv")
 
-    df = df[(df.z > 8) & (df.n > 8) & (df.n<156)]  # TODO remove this line
+    df = df[(df.z > 8) & (df.n > 8)]  # TODO remove this line
     return df
 
 

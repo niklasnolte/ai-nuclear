@@ -1,5 +1,6 @@
 import torch
 from torch import nn
+from torch.nn import functional as F
 from functools import partial
 import mup
 import warnings
@@ -61,6 +62,7 @@ class ResidualBlock(nn.Module):
         """
         return self.norm(x + self.dropout(self.ff(x)))
 
+
 class BaselineModel(Base):
     def __init__(
         self, vocab_size: Union[int, Iterable], hidden_dim: int, output_dim: int
@@ -75,13 +77,14 @@ class BaselineModel(Base):
         super().__init__(vocab_size, hidden_dim)
 
         self.nonlinear = nn.Sequential(
-            nn.Linear(len(self.vocab_size) * self.embedding_dim, hidden_dim),
+            nn.Linear(2 * self.embedding_dim, hidden_dim),
             nn.SiLU(),
-            ResidualBlock(hidden_dim, dropout=0),
-            nn.SiLU(),
-            ResidualBlock(hidden_dim, dropout=0),
-            nn.SiLU(),
-            ResidualBlock(hidden_dim, dropout=0),
+            nn.Linear(hidden_dim, hidden_dim),
+            # ResidualBlock(hidden_dim, dropout=0),
+            # nn.SiLU(),
+            # ResidualBlock(hidden_dim, dropout=0),
+            # nn.SiLU(),
+            # ResidualBlock(hidden_dim, dropout=0),
             nn.SiLU(),
         )
         self.readout = nn.Linear(hidden_dim, output_dim)
@@ -133,6 +136,58 @@ class SplitupModel(Base):
         )  # [ batch_size, sum(output_dim) ]
 
 
+
+class GatingNetwork(nn.Module):
+    def __init__(self, input_size, num_experts):
+        super(GatingNetwork, self).__init__()
+        self.fc = mup.MuReadout(input_size, num_experts)
+
+    def forward(self, x):
+        return F.softmax(self.fc(x), dim=-1)
+
+
+class MoEModel(Base):
+    def __init__(
+        self, vocab_size: Union[int, Iterable], hidden_dim: int, output_dim: int
+    ):
+        """
+        :param vocab_size: number of tokens in the vocabulary,
+          or an Iterable of vocab sizes for each input. One embedding layer will be created for each input.
+        :param hidden_dim: dimension of the hidden layer
+        :param output_dim: dimension of the output layer
+        """
+
+        super().__init__(vocab_size, hidden_dim)
+
+        self.num_experts = 32
+
+        def expert(input_size, hidden_size, output_size):
+            return nn.Sequential(
+                nn.Linear(input_size, hidden_size),
+                nn.SiLU(),
+                nn.Linear(hidden_size, hidden_size),
+                nn.SiLU(),
+                mup.MuReadout(hidden_size, output_size),
+            )
+
+        self.experts = nn.ModuleList(
+            [
+                expert(2 * hidden_dim, hidden_dim, output_dim)
+                for _ in range(self.num_experts)
+            ]
+        )
+        self.gating_network = GatingNetwork(2 * hidden_dim, self.num_experts)
+        print(sum(p.numel() for p in self.parameters() if p.requires_grad))
+
+    def forward_with_embeddings(self, x, embs):
+        x = self.embed_input(x, embs)
+
+        weights = self.gating_network(x)
+        expert_outputs = torch.stack([expert(x) for expert in self.experts], dim=-1)
+        output = torch.einsum("ij,ikj->ik", weights, expert_outputs)
+        return output
+
+
 from transformer import FilteredAttentionTransformer
 from transformer import DefaultTransformer
 
@@ -146,9 +201,11 @@ def get_model_fn(config):
         return FilteredAttentionTransformer
     elif config.MODEL == "deftrafo":
         return DefaultTransformer
+    elif config.MODEL == "moe":  # Add a new condition for the MoE model
+        return MoEModel
     else:
         raise ValueError(
-            f"Unknown model: {config.MODEL}, choose between 'baseline' and 'splitup'"
+            f"Unknown model: {config.MODEL}, choose between 'baseline', 'splitup', 'transformer', 'deftrafo', and 'moe'"
         )
 
 
@@ -214,6 +271,7 @@ def make_mup(model_fn: Callable, **scale_kwargs) -> nn.Module:
             # mup.init.uniform_(param, -.1, .1)
             mup.init.kaiming_uniform_(param, a=5**0.5, nonlinearity="leaky_relu")
     return model
+
 
 def get_model_and_optim(data: Data, config):
     # set up model

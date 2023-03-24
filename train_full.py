@@ -2,6 +2,7 @@ import os
 import tqdm
 import torch
 import argparse
+import mup
 from data import prepare_nuclear_data, train_test_split, prepare_modular_data
 from model import get_model_and_optim
 from loss import (
@@ -29,6 +30,11 @@ def train(task: Task, args: argparse.Namespace, basedir: str):
     )
 
     model, optimizer = get_model_and_optim(data, args)
+    # cosine annealing with restarts
+    # scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
+    #     optimizer, T_0=100, T_mult=2, eta_min=1e-3
+    # )
+
     if args.WANDB:
         import wandb
         wandb.config.update({"n_params": sum(p.numel() for p in model.parameters())})
@@ -38,6 +44,11 @@ def train(task: Task, args: argparse.Namespace, basedir: str):
     else:
         bar = range(args.EPOCHS)
     for epoch in range(args.EPOCHS):
+        # if epoch % 50000 == 0 and epoch != 0:
+        #   # reinitialize weights to match the current norm
+        #   for param in model.parameters():
+        #     range_ = param.std().item() * 12 ** .5 / 2
+        #     torch.nn.init.uniform_(param, -range_, range_)
         # Train
         model.train()
         optimizer.zero_grad()
@@ -64,7 +75,11 @@ def train(task: Task, args: argparse.Namespace, basedir: str):
 
         train_loss = train_loss.mean()
         train_loss.backward()
+        # grad dict
+        grad_dict = {name: param.grad.norm() for name, param in model.named_parameters()}
+
         optimizer.step()
+        #scheduler.step()
 
         if epoch % args.LOG_FREQ == 0:
             with torch.no_grad():
@@ -127,6 +142,15 @@ def train(task: Task, args: argparse.Namespace, basedir: str):
                         },
                         step=epoch,
                     )
+                    wandb.log(
+                        {
+                            "grad_norms": {
+                                name: grad.item()
+                                for name, grad in grad_dict.items()
+                            }
+                        },
+                        step=epoch,
+                    )
                 else:
                     msg = f"\nEpoch {epoch:<6} Train Losses | Metrics\n"
                     for i, target in enumerate(data.output_map.keys()):
@@ -140,6 +164,11 @@ def train(task: Task, args: argparse.Namespace, basedir: str):
                     for name, param in model.named_parameters():
                         if param.requires_grad:
                             msg += f"{name:>20}: {param.norm().item():.2e}\n"
+
+                    # log grad dict
+                    msg += f"\nEpoch {epoch:<8} Grad Norms\n"
+                    for name, grad in grad_dict.items():
+                        msg += f"{name:>20}: {grad.item():.2e}\n"
 
                     print(msg)
                     bar.update(args.LOG_FREQ)

@@ -8,15 +8,15 @@ from torch.utils.data import DataLoader, TensorDataset
 import tqdm
 import optuna
 from model import Model2, Model3, Model_multi
-from data import get_data, clear_y, yorig, rms
+from data import get_data, clear_x, clear_y, yorig, rms
 from sklearn.decomposition import PCA
 import time    
     
 
-def loss_true(loss_fn, y_dat, y0_dat, y_pred, n_obs): #returns the loss considering for each obs only the existing measurements
+def loss_true(loss_fn, y0_dat, y_dat, y_pred, n_obs): #returns the loss considering for each obs only the existing measurements
   loss = 0
   for obs_i in range(n_obs):     
-     y_dat_i, y_pred_i = clear_y(y_dat,y0_dat, y_pred, obs_i) 
+     y_dat_i, y_pred_i = clear_y(y0_dat,y_dat,y_pred,obs_i) 
      loss_i = loss_fn(y_pred_i, y_dat_i).mean()
      loss += loss_i
   loss = loss/n_obs
@@ -25,17 +25,20 @@ def loss_true(loss_fn, y_dat, y0_dat, y_pred, n_obs): #returns the loss consider
 def train(modeltype, lr, wd, alpha, hidden_dim, obs, n_epochs, basepath, device):
   torch.manual_seed(100)
   os.makedirs(basepath, exist_ok=True)
-  (X_train, X_test), (y_train, y_test), (y0_train, y0_test), (y0_mean, y0_std), vocab_size = get_data(opt,obs,heavy_mask)
+  (X_train, X_test), (y_train, y_test), (y0_train, y0_test), (y0_mean, y0_std), vocab_size = get_data(opt,obs,heavy_mask,'on')
 
   X_train = X_train.to(device)
   X_test = X_test.to(device)
   y_train = y_train.to(device)
   y_test = y_test.to(device)
-
+  
+  if 'binding' in obs:
+      (X_train_r, X_test_r), _, (y0_train_r, y0_test_r), (y0_mean_r, y0_std_r), _ = get_data(opt,obs,heavy_mask,'off')      
+      
   all_protons = torch.tensor(list(range(vocab_size[0]))).to(device)
   all_neutrons = torch.tensor(list(range(vocab_size[1]))).to(device)
 
-  train_loader = DataLoader(TensorDataset(X_train, y_train, y0_train), batch_size=256, shuffle=True)
+  train_loader = DataLoader(TensorDataset(X_train, y0_train, y_train), batch_size=256, shuffle=True)
 
   n_obs = len(obs)
   model = modeltype(*vocab_size, hidden_dim, n_obs).to(device)
@@ -52,21 +55,26 @@ def train(modeltype, lr, wd, alpha, hidden_dim, obs, n_epochs, basepath, device)
   
   for i in bar:
     optimizer = early_optimizer# if i < len(bar)//2 else late_optimizer
-    for X_batch, y_batch, y0_batch in train_loader:
+    for X_batch, y0_batch, y_batch in train_loader:
       optimizer.zero_grad()
       model.train()
       y_pred = model(X_batch)
-      loss = loss_true(loss_fn, y_batch, y0_batch, y_pred, n_obs)             
+      loss = loss_true(loss_fn, y0_batch, y_batch, y_pred, n_obs)             
       #loss += 2*model.alldims_loss(loss_fn,X_batch,y_batch)
       loss += alpha * (pr_e + ne_e)
       loss.backward()
       optimizer.step()
     with torch.no_grad():
       model.eval()
-      train_loss = loss_true(loss_fn, y_batch, y0_batch, y_pred, n_obs)
+      train_loss = loss_true(loss_fn, y0_batch, y_batch, y_pred, n_obs)
       y_pred = model(X_test)     
-      loss = loss_true(loss_fn, y_test, y0_test, y_pred, n_obs)   
-      rms0 = rms(y0_test, yorig(y_pred,y0_mean, y0_std),0)        
+      loss = loss_true(loss_fn, y_test, y0_test, y_pred, n_obs)  
+      A_test = (X_test[:,0] + X_test[:,1]).view(-1,1)
+      
+      rms0 = rms(y0_test_r, y0_test*A_test, yorig(y_pred,y0_mean, y0_std)*A_test, 0)   
+      
+      # rms0 = rms(y0_test,y0_test*A_test,yorig(y_pred,y0_mean, y0_std)*A_test,0)
+      
       if loss < lowest_loss:
           lowest_loss = loss
           best_state_dict = model.state_dict()
@@ -86,9 +94,13 @@ def train(modeltype, lr, wd, alpha, hidden_dim, obs, n_epochs, basepath, device)
         pr_e = np.exp(entropy_protons)
         ne_e = np.exp(entropy_neutrons)
       
-       # X = torch.cat((X_train,X_test), 0)
-       # y0_dat = torch.cat((y0_train,y0_test), 0)
-       # rms0 = rms(y0_dat, yorig(model(X),y0_mean, y0_std),0)  
+        # X = torch.cat((X_train,X_test), 0)
+        # A = (X[:,0] + X[:,1]).view(-1,1)
+        # y0_dat = torch.cat((y0_train,y0_test), 0)
+        # y0_pred = yorig(model(X),y0_mean, y0_std)
+        # y0_dat[:,0] *= A.squeeze()
+        # y0_pred[:,0] *= A.squeeze()
+        # rms0 = rms(y0_dat, y0_pred, 0)  
        
       bar.set_postfix(loss=loss.item(), train_loss=train_loss.item(), pr_e=pr_e, ne_e=ne_e, rms0=rms0.item())
       
@@ -115,10 +127,10 @@ start = time.time()
 
 #define the options, observables, mask
 opt = 'data'
-obs = ['binding','radius','qbm','abundance']
+obs = ['binding']
 #obs = ['half_life']
 #obs = ['qbm']
-heavy_mask = 2
+heavy_mask = 8
 
 
 if opt=='empirical':

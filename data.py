@@ -270,42 +270,6 @@ def prepare_modular_data(args : argparse.Namespace):
   return Data(
     X.to(args.DEV),
     y.to(args.DEV),
-    (args.P,),
-    output_map,
-    feature_transformer
-  )
-
-
-def prepare_modular_data(args : argparse.Namespace):
-  # modular arithmetic data
-  # X = cartesian product of [0..p] x [0..p]
-  # y = (x1 op x2) % p
-  X = torch.cartesian_prod(torch.arange(args.P), torch.arange(args.P))
-  output_map = OrderedDict()
-  for target in args.TARGETS_CLASSIFICATION:
-    output_map[target] = args.P
-  for target in args.TARGETS_REGRESSION:
-    output_map[target] = 1
-
-  y = torch.zeros(X.shape[0], len(output_map))
-  for idx, target in enumerate(output_map):
-    if target == "add":
-      y[:, idx] = (X[:, 0] + X[:, 1]) % args.P
-    elif target == "subtract":
-      y[:, idx] = (X[:, 0] - X[:, 1]) % args.P
-    elif target == "multiply":
-      y[:, idx] = (X[:, 0] * X[:, 1]) % args.P
-    else:
-      raise ValueError(f"Unknown target {target}")
-
-  feature_transformer = RobustScaler()
-  reg_cols = -len(args.TARGETS_REGRESSION)
-  if reg_cols != 0:
-    y[:,reg_cols:] = feature_transformer.fit_transform(y[:, reg_cols:])
-
-  return Data(
-    X.to(args.DEV),
-    y.to(args.DEV),
     args.P,
     output_map,
     feature_transformer

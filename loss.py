@@ -60,7 +60,7 @@ def weight_by_task(output_map: dict, args: argparse.Namespace) -> torch.Tensor:
             weight = args.TARGETS_REGRESSION[target_name]
         weights.append(weight)
     weights = torch.tensor(weights) / sum(weights)
-    return weights.to(args.DEV)
+    return weights.to(args.DEV).view(-1, 1)
 
 
 def loss_by_task(
@@ -84,18 +84,20 @@ def loss_by_task(
     target_names = list(output_map.keys())
     # reshape output according to output_map and return tuple by regression and classification
     output_column = 0
-    loss = torch.zeros(len(target_names), device=output.device)
+    loss = torch.zeros((len(target_names), len(targets)), device=output.device)
+    # TODO sometimes we mask out a lot of things because there is not much data, but they get assigned
+    # 0 loss. that skews the train loss value, but metrics are probably fine.
     for target_column, target_name in enumerate(target_names):
         mask = ~torch.isnan(targets[:, target_column])
         masked_target = targets[:, target_column][mask]
         if target_name in config.TARGETS_CLASSIFICATION:
             size = output_map[target_name]
             out = output[:, output_column : output_column + size]
-            loss[target_column] = F.cross_entropy(out[mask], masked_target.long())
+            loss[target_column, mask] = F.cross_entropy(out[mask], masked_target.long(), reduction="none")
             output_column += size
         else:
             out = output[:, output_column]
-            loss[target_column] = F.mse_loss(out[mask], masked_target.float())
+            loss[target_column, mask] = F.mse_loss(out[mask], masked_target.float(), reduction="none")
             output_column += 1
     return loss
 
@@ -140,6 +142,7 @@ def get_balanced_accuracy(output: torch.Tensor, target: torch.Tensor) -> torch.T
 
 def metric_by_task(
     output: torch.Tensor,
+    inputs: torch.Tensor,
     targets: torch.Tensor,
     output_map: dict,
     config: argparse.Namespace,
@@ -158,6 +161,8 @@ def metric_by_task(
 
     returns accuracy: [targets_dim]
     """
+    nprotons = inputs[:, 0]
+    nneutrons = inputs[:, 1]
     # WARNING: classification comes first
     target_names = list(output_map.keys())
     # reshape output according to output_map and return tuple by regression and classification
@@ -169,6 +174,7 @@ def metric_by_task(
         t for t in target_names if t in config.TARGETS_CLASSIFICATION
     ]
     target_column = 0
+    targets = targets.clone()
     for target_name in classification_targets:
         mask = ~torch.isnan(targets[:, target_column])
         masked_target = targets[:, target_column][mask].long()
@@ -192,7 +198,12 @@ def metric_by_task(
         mask = ~torch.isnan(targets[:, target_column])
         masked_target = targets[:, target_column][mask]
         out = output[:, output_column]
-        metrics[target_column] = F.mse_loss(out[mask], masked_target.float()).sqrt()
+        if False:#target_name == "binding_energy":
+          masked_out = out[mask] * (nprotons[mask] + nneutrons[mask])
+          masked_target = masked_target * (nprotons[mask] + nneutrons[mask])
+        else:
+          masked_out = out[mask]
+        metrics[target_column] = F.mse_loss(masked_out, masked_target.float()).sqrt()
         output_column += 1
         target_column += 1
 

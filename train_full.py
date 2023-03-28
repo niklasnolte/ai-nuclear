@@ -13,6 +13,7 @@ from loss import (
     regularize_embedding_dim,
 )
 from config import Task
+from esam import ESAM
 
 
 def train(task: Task, args: argparse.Namespace, basedir: str):
@@ -24,25 +25,29 @@ def train(task: Task, args: argparse.Namespace, basedir: str):
     best_model = None
     best_loss = float("inf")
 
-    DEVICE = args.DEV
     train_mask, val_mask = train_test_split(
         data, train_frac=args.TRAIN_FRAC, seed=args.SEED
     )
+    y_train = data.y[train_mask]
+    y_val = data.y[val_mask]
+    X_train = data.X[train_mask]
+    X_val = data.X[val_mask]
 
     model, optimizer = get_model_and_optim(data, args)
-    # cosine annealing with restarts
-    # scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
-    #     optimizer, T_0=100, T_mult=2, eta_min=1e-3
-    # )
+    # optimizer = ESAM(optimizer.param_groups, optimizer)
 
     if args.WANDB:
         import wandb
+
         wandb.config.update({"n_params": sum(p.numel() for p in model.parameters())})
     weights = weight_by_task(data.output_map, args)
     if not args.WANDB:
-        bar = tqdm.trange(args.EPOCHS, )
+        bar = tqdm.trange(
+            args.EPOCHS,
+        )
     else:
         bar = range(args.EPOCHS)
+
     for epoch in range(args.EPOCHS):
         # if epoch % 50000 == 0 and epoch != 0:
         #   # reinitialize weights to match the current norm
@@ -52,55 +57,75 @@ def train(task: Task, args: argparse.Namespace, basedir: str):
         # Train
         model.train()
         optimizer.zero_grad()
+        if isinstance(optimizer, ESAM):
+          model.require_backward_grad_sync = False
+          model.require_forward_param_sync = True
+
         out = model(data.X)
-
         train_losses = loss_by_task(
-            out[train_mask], data.y[train_mask], data.output_map, args
+            out[train_mask], y_train, data.output_map, args
         )
-
-        if args.RANDOM_WEIGHTS:
-            weight_scaler = random_softmax(weights.shape, scale=args.RANDOM_WEIGHTS).to(
-                DEVICE
-            )
-        else:
-            weight_scaler = 1
-
-        train_loss = weights * train_losses * weight_scaler
-
-        if args.DIMREG_COEFF > 0:
-            dimreg = regularize_embedding_dim(
-                model, data.X[train_mask], data.y[train_mask], data.output_map, args
-            )
-            train_loss += args.DIMREG_COEFF * dimreg
-
+        train_loss = weights * train_losses
+        l_before = train_loss.clone().detach()
+        train_losses = train_losses.mean(dim=1)
         train_loss = train_loss.mean()
         train_loss.backward()
-        # grad dict
-        grad_dict = {name: param.grad.norm() for name, param in model.named_parameters()}
 
-        optimizer.step()
-        #scheduler.step()
+        if isinstance(optimizer, ESAM):
+            # first step to w + e(w)
+            optimizer.first_step(True)
+
+            with torch.no_grad():
+                train_losses_after = loss_by_task(
+                    model(X_train), y_train, data.output_map, args
+                )
+                l_after = weights * train_losses_after
+                instance_sharpness = l_after - l_before
+
+                # codes for sorting
+                if optimizer.gamma >= 0.99:
+                    indices = range(len(y_train))
+                else:
+                    position = int(len(y_train) * optimizer.gamma)
+                    cutoff, _ = torch.topk(instance_sharpness, position)
+                    cutoff = cutoff[-1]
+                    # cutoff = 0
+                    # select top k%
+                    indices = [instance_sharpness > cutoff]
+
+            model.require_backward_grad_sync = True
+            model.require_forward_param_sync = False
+            selected_losses = loss_by_task(
+                model(X_train[indices]), y_train[indices], data.output_map, args
+            )
+            selected_loss = (weights * selected_losses).mean()
+            selected_loss.backward()
+            optimizer.second_step(True)
+        else:
+            optimizer.step()
 
         if epoch % args.LOG_FREQ == 0:
             with torch.no_grad():
                 model.eval()
                 train_metrics = metric_by_task(
                     out[train_mask],
-                    data.y[train_mask],
+                    X_train,
+                    y_train,
                     data.output_map,
                     args,
                     qt=data.regression_transformer,
                 )
                 val_metrics = metric_by_task(
                     out[val_mask],
-                    data.y[val_mask],
+                    X_val,
+                    y_val,
                     data.output_map,
                     args,
                     qt=data.regression_transformer,
                 )
                 val_losses = loss_by_task(
-                    out[val_mask], data.y[val_mask], data.output_map, args
-                )
+                    out[val_mask], y_val, data.output_map, args
+                ).mean(dim=1)
                 val_loss = (weights * val_losses).mean()
                 # keep track of the best model
                 if val_loss < best_loss:
@@ -132,43 +157,13 @@ def train(task: Task, args: argparse.Namespace, basedir: str):
                         },
                         step=epoch,
                     )
-                    wandb.log(
-                        {
-                            "weight_norms": {
-                                name: param.norm().item()
-                                for name, param in model.named_parameters()
-                                if param.requires_grad
-                            }
-                        },
-                        step=epoch,
-                    )
-                    wandb.log(
-                        {
-                            "grad_norms": {
-                                name: grad.item()
-                                for name, grad in grad_dict.items()
-                            }
-                        },
-                        step=epoch,
-                    )
                 else:
                     msg = f"\nEpoch {epoch:<6} Train Losses | Metrics\n"
                     for i, target in enumerate(data.output_map.keys()):
-                        msg += f"{target:>15}: {train_losses[i].item():.2e} | {train_metrics[i].item():.4f}\n"
+                        msg += f"{target:>15}: {train_losses[i].item():.4e} | {train_metrics[i].item():.6f}\n"
                     msg += f"\nEpoch {epoch:<8} Val Losses | Metrics\n"
                     for i, target in enumerate(data.output_map.keys()):
-                        msg += f"{target:>15}: {val_losses[i].item():.2e} | {val_metrics[i].item():.4f}\n"
-
-                    # print weight norms of the model:
-                    msg += f"\nEpoch {epoch:<8} Weight Norms\n"
-                    for name, param in model.named_parameters():
-                        if param.requires_grad:
-                            msg += f"{name:>20}: {param.norm().item():.2e}\n"
-
-                    # log grad dict
-                    msg += f"\nEpoch {epoch:<8} Grad Norms\n"
-                    for name, grad in grad_dict.items():
-                        msg += f"{name:>20}: {grad.item():.2e}\n"
+                        msg += f"{target:>15}: {val_losses[i].item():.4e} | {val_metrics[i].item():.6f}\n"
 
                     print(msg)
                     bar.update(args.LOG_FREQ)

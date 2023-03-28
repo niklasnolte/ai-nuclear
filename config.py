@@ -11,6 +11,7 @@ class Task(Enum):
             MODEL=["posembed", "splitup", "baseline"],
             WD=[3e-3],  # first one seems to be best
             LR=[1e-1, 1e-2],
+            DROPOUT=[0., 1e-1],
             EPOCHS=[10000],
             TRAIN_FRAC=[0.8],
             HIDDEN_DIM=[32],
@@ -52,8 +53,9 @@ class Task(Enum):
             MODEL=["baseline"],
             WD=[5e-3, 5e-2, 1e-1],
             LR=[1e-2, 1e-3, 1e-1],
+            DROPOUT=[0., 1e-1],
             EPOCHS=[100000],
-            TRAIN_FRAC=[0.5],
+            TRAIN_FRAC=[0.9],
             HIDDEN_DIM=[64],
             SEED=[0, 1, 2],
             RANDOM_WEIGHTS=[
@@ -64,7 +66,10 @@ class Task(Enum):
             DIMREG_COEFF=[0., 2.0, 1.0, 0.5],
             DIMREG_EXP=[-1.5, -1.0],  # power to weight indices in dimn regularization
             TARGETS_CLASSIFICATION=[
-                {"add": 1, "subtract": 1},
+                # {"add": 1},
+                # {"subtract": 1},
+                # {"multiply": 1},
+                # {"add": 1, "subtract": 1},
                 {"add": 1, "multiply": 1},
                 {"add": 1, "subtract": 1, "multiply": 1},
             ],
@@ -79,8 +84,9 @@ class Task(Enum):
             MODEL=["baseline"],
             WD=[1e-3],  # first one seems to be best
             LR=[1e-2],
+            DROPOUT=[0., 1e-1],
             EPOCHS=[2],
-            TRAIN_FRAC=[0.8],
+            TRAIN_FRAC=[0.95],
             HIDDEN_DIM=[32],
             SEED=[0],
             RANDOM_WEIGHTS=[0],

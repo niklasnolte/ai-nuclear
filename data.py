@@ -270,7 +270,7 @@ def prepare_modular_data(args : argparse.Namespace):
   return Data(
     X.to(args.DEV),
     y.to(args.DEV),
-    (args.P,),
+    args.P,
     output_map,
     feature_transformer
   )

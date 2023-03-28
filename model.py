@@ -15,6 +15,7 @@ class Base(nn.Module):
         super().__init__()
         if isinstance(vocab_size, int):
             vocab_size = [vocab_size]
+        self.vocab_size = vocab_size
         self.emb = nn.ModuleList(
             [nn.Embedding(v, hidden_dim) for v in vocab_size]
         )
@@ -54,10 +55,10 @@ class BaselineModel(Base):
             nn.SiLU(),
             nn.Linear(hidden_dim, hidden_dim),
             nn.SiLU(),
-            ResidualBlock(hidden_dim, dropout=dropout),
-            nn.SiLU(),
-            ResidualBlock(hidden_dim, dropout=dropout),
-            nn.SiLU(),
+            # ResidualBlock(hidden_dim, dropout=dropout),
+            # nn.SiLU(),
+            # ResidualBlock(hidden_dim, dropout=dropout),
+            # nn.SiLU(),
             nn.Linear(hidden_dim, hidden_dim),
             nn.SiLU(),
         )
@@ -163,20 +164,20 @@ class BinaryEmbedding(nn.Module):
     ):
         super().__init__()
         self.dropout = nn.Dropout(p=dropout)
-        self.embedding = torch.zeros((max_len, d_model))
+        self.weight = torch.zeros((max_len, d_model))
         for i in range(max_len):
-            self.embedding[i] = torch.tensor(
+            self.weight[i] = torch.tensor(
                 [int(x) for x in bin(i)[2:].zfill(d_model)]
             )
-        self.embedding = ((self.embedding) * 2 - 1) * 1e-3
-        self.embedding = nn.Parameter(self.embedding, requires_grad=requires_grad)
+        self.weight = ((self.weight) * 2 - 1) * 1e-3
+        self.weight = nn.Parameter(self.weight, requires_grad=requires_grad)
 
     def forward(self, x: Tensor) -> Tensor:
         """
         Args:
             x: Tensor, shape [batch_size, seq_len]
         """
-        x = self.embedding[x]
+        x = self.weight[x]
         return self.dropout(x)
 
 
@@ -215,7 +216,7 @@ class PosEmbed(Base):
 
         self.n_tasks = len(output_dim)
         d_model = hidden_dim # // self.n_tasks
-        emb_size = 64
+        emb_size = hidden_dim
         self.pe = PositionalEncoding(
             emb_size, dropout=0, max_len=200, requires_grad=False
         )
@@ -224,16 +225,16 @@ class PosEmbed(Base):
                 BinaryEmbedding(
                     emb_size, dropout=0, max_len=vocab, requires_grad=train_embeddings
                 )
-                for vocab in vocab_size
+                for vocab in self.vocab_size
             ]
         )
-        self.input = nn.Linear(emb_size * 2, hidden_dim)
+        self.input = nn.Linear(emb_size * 2, emb_size * 4)
         # self.input = nn.Linear(2, hidden_dim)
 
         self.nonlinears = nn.ModuleList(
             [
                 nn.Sequential(
-                    nn.Linear(hidden_dim, d_model),
+                    nn.Linear(emb_size * 4, d_model),
                     nn.SiLU(),
                     # nn.LayerNorm(d_model, elementwise_affine=False),
                     nn.Linear(d_model, d_model),
@@ -242,9 +243,9 @@ class PosEmbed(Base):
                     ResidualBlock(d_model, dropout=dropout),
                     ResidualBlock(d_model, dropout=dropout),
                     ResidualBlock(d_model, dropout=dropout),
-                    # ResidualBlock(d_model, dropout=dropout),
-                    # ResidualBlock(d_model, dropout=dropout),
-                    # ResidualBlock(d_model, dropout=dropout),
+                    ResidualBlock(d_model, dropout=dropout),
+                    ResidualBlock(d_model, dropout=dropout),
+                    ResidualBlock(d_model, dropout=dropout),
                     nn.Linear(d_model, d_model),
                     nn.SiLU(),
                     mup.MuReadout(d_model, od),
@@ -261,8 +262,7 @@ class PosEmbed(Base):
         # max_ = x.amax(dim=0)
         # x = (x - min_) / (max_ - min_)
         # pe = self.pe(x).flatten(1)
-        x = [self.embed[i](x[:, i]) for i in range(x.shape[1])]
-        x = torch.cat(x, dim=1)
+        x = self.embed_input(x, embs) 
         # x += pe
         x = self.input(x)
         x = torch.cat(
@@ -345,7 +345,7 @@ def make_mup(model_fn: Callable, config, **scale_kwargs) -> nn.Module:
     for name, param in model.named_parameters():
         if "weight" in name.lower():  # FIXME embeddings do not have weight attr in some models
             if "emb" in name.lower():
-                a = config.EMB_INIT
+                a = 1e-3
                 mup.init.uniform_(param, a=-a, b=a)
             else:
                 mup.init.kaiming_uniform_(param, a=5**0.5)
@@ -375,8 +375,8 @@ def get_model_and_optim(data: Data, config):
         output_dim=output_dim,
         dropout=config.DROPOUT,
     )
-    model = make_mup(model_fn, hidden_dim=config.HIDDEN_DIM, config=config).to(config.DEV)
-    # model = model_fn(hidden_dim=config.HIDDEN_DIM).to(config.DEV)
+    # model = make_mup(model_fn, hidden_dim=config.HIDDEN_DIM, config=config).to(config.DEV)
+    model = model_fn(hidden_dim=config.HIDDEN_DIM).to(config.DEV)
     # separate weights and biases
     weight_params = []
     bias_params = []
@@ -388,15 +388,17 @@ def get_model_and_optim(data: Data, config):
             emb_params.append(param)
         else:
             weight_params.append(param)
-        
-    optimizer = mup.MuAdamW(
+    
+    # optim = mup.MuAdamW
+    optim = torch.optim.AdamW
+    optimizer = optim(
         [
             {"params": weight_params, "weight_decay": config.WD},
             {"params": bias_params, "weight_decay": 0.0},
             {"params": emb_params, "weight_decay": config.WD},
         ],
         lr=config.LR,
-        betas=config.betas, #(0.96, 0.992),
+        betas=(0.96, 0.992), #config.BETAS,
         amsgrad=True,
     )
     

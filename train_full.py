@@ -92,12 +92,13 @@ def train(task: Task, args: argparse.Namespace, basedir: str):
                 # keep track of the best model
                 if val_loss < best_loss:
                     best_loss = val_loss
+                    best_metrics = val_metrics
                     best_model = model.state_dict().copy()
                     if args.WANDB:
                         wandb.run.summary["best_val_loss"] = best_loss.item()
                         wandb.run.summary["best_epoch"] = epoch
                         for i, target in enumerate(data.output_map.keys()):
-                            wandb.run.summary[f"best_val_{target}"] = val_metrics[
+                            wandb.run.summary[f"best_val_{target}"] = best_metrics[
                                 i
                             ].item()
 
@@ -122,10 +123,10 @@ def train(task: Task, args: argparse.Namespace, basedir: str):
                 else:
                     msg = f"Epoch {epoch:<6} Train Losses | Metrics"
                     for i, target in enumerate(data.output_map.keys()):
-                        msg += f"\n{target:>15}: {train_losses[i].item():.2e} | {train_metrics[i].item():.2f}"
-                    msg += f"\nEpoch {epoch:<8} Val Losses | Metrics"
+                        msg += f"\n{target:>15}: {train_losses[i].item():.2e} | {train_metrics[i].item():^7.2f}"
+                    msg += f"\nEpoch {epoch:<8} Val Losses | Metrics | Best (@lowest valloss)"
                     for i, target in enumerate(data.output_map.keys()):
-                        msg += f"\n{target:>15}: {val_losses[i].item():.2e} | {val_metrics[i].item():.2f}"
+                        msg += f"\n{target:>15}: {val_losses[i].item():.2e} | {val_metrics[i].item():^7.2f} | {best_metrics[i].item():.2f}"
                     print(msg)
                     # desc_bar.set_description_str(msg)
 

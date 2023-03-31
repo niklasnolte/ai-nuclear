@@ -159,13 +159,11 @@ class MoEModel(Base):
 
         super().__init__(vocab_size, hidden_dim)
 
-        self.num_experts = 32
+        self.num_experts = 4
 
         def expert(input_size, hidden_size, output_size):
             return nn.Sequential(
                 nn.Linear(input_size, hidden_size),
-                nn.SiLU(),
-                nn.Linear(hidden_size, hidden_size),
                 nn.SiLU(),
                 mup.MuReadout(hidden_size, output_size),
             )
@@ -297,7 +295,7 @@ def get_model_and_optim(data: Data, config):
             "weight_decay": config.WD,
         },
     ]
-    optimizer = mup.MuAdamW(param_groups, lr=config.LR, amsgrad=True)
+    optimizer = mup.MuSGD(param_groups, lr=config.LR, momentum=.99, nesterov=True)
     # split into weights biases
     # optimizer = torch.optim.AdamW(param_groups, lr=config.LR, amsgrad=True)
     # optimizer = torch.optim.AdamW(model, lr=config.LR, amsgrad=True)

@@ -10,7 +10,6 @@ import mup
 from model import BaselineModel, make_mup
 from functools import partial
 from regularization import forward_with_reg
-import random
 # %%
 
 class BaselineModel(Base):
@@ -40,8 +39,8 @@ class BaselineModel(Base):
             nn.SiLU(),
             ResidualBlock(hidden_dim, dropout=dropout),
             nn.SiLU(),
-            nn.Linear(hidden_dim, hidden_dim),
-            nn.SiLU(),
+            # nn.Linear(hidden_dim, hidden_dim),
+            # nn.SiLU(),
         )
         self.readout = nn.Linear(hidden_dim, output_dim)
 
@@ -134,7 +133,7 @@ def train_model(epochs=100, hidden_dim=128, lr=1e-2, weight_decay=1, reg=1, amsg
     model_fn = partial(BaselineModel, vocab_size=(P + len(operations)), output_dim=P, factor=3)
     model = make_mup(model_fn, hidden_dim=hidden_dim)
     param_groups = [
-        {"params": model.emb.parameters(), "weight_decay": weight_decay},
+        {"params": model.emb.parameters(), "weight_decay": 0},
         {"params": model.nonlinear.parameters(), "weight_decay": weight_decay},
         {"params": model.readout.parameters(), "weight_decay": weight_decay},
     ]
@@ -169,7 +168,8 @@ def train_model(epochs=100, hidden_dim=128, lr=1e-2, weight_decay=1, reg=1, amsg
         bar.set_postfix_str(postfix)
     return model
 # %%
-model = train_model(epochs=5000, hidden_dim=128, lr=1e-2, weight_decay=1e-3, amsgrad=True)
+model_init = train_model(epochs=0, hidden_dim=16, lr=1e-2, weight_decay=1e-3, amsgrad=True)
+model = train_model(epochs=10000, hidden_dim=128, lr=1e-2, weight_decay=1e-3, amsgrad=True)
 # %%
 
 # Now let's plot the embeddings
@@ -195,8 +195,18 @@ ax.set_title("Embeddings")
 
 
 # %%
-for i, op in enumerate(operations):
-    print(op)
-    print(embs[P + i, :])
-
+emb_orig = model.emb[0].weight.detach().numpy()
+plt.imshow(torch.log(torch.abs(emb_orig)), cmap="viridis")
+plt.colorbar()
+plt.show()
+plt.imshow(model.emb[0].weight.detach().numpy()[:P, :].T, cmap="bwr")
+plt.colorbar()
 # %%
+print(X[mask_test][::200])
+print(model(X[mask_test][::200]))
+# %%
+for x, y_, pred, _ in zip(X[mask_test][::200], y[mask_test][::200], model(X[mask_test][::200]), range(10)):
+    print(x, y_, pred.argmax())
+
+
+    

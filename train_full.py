@@ -62,7 +62,21 @@ def train(task: Task, args: argparse.Namespace, basedir: str):
         train_losses = loss_by_task(
             out[data.train_mask], y_train, data.output_map, args
         )
-        train_loss = weights * train_losses
+        if args.RANDOM_WEIGHTS > 0:
+            weight_scaler = random_softmax(weights.shape, scale=args.RANDOM_WEIGHTS).to(
+                args.DEV
+            )
+        else:
+            weight_scaler = 1
+        # TODO i don't think that properly works together with ESAM
+        if args.DIMREG_COEFF > 0:
+            dimreg = regularize_embedding_dim(
+                model, data.X[data.train_mask], data.y[data.train_mask], data.output_map, args
+            )
+            train_losses += args.DIMREG_COEFF * dimreg
+
+        train_loss = weights * train_losses * weight_scaler
+
         l_before = train_loss.clone().detach()
         train_losses = train_losses.mean(dim=1)
         train_loss = train_loss.mean()

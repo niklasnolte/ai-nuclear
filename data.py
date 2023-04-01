@@ -235,9 +235,16 @@ def train_test_split_exact(X, train_frac, seed=1):
     """
     # TODO shuffle data when using SGD
     torch.manual_seed(seed)
-    train_mask = torch.ones(X.shape[0], dtype=torch.bool)
-    train_mask[int(train_frac * X.shape[0]) :] = False
-    train_mask = train_mask[torch.randperm(X.shape[0])]
+    while True:
+        train_mask = torch.ones(X.shape[0], dtype=torch.bool)
+        train_mask[int(train_frac * X.shape[0]) :] = False
+        train_mask = train_mask[torch.randperm(X.shape[0])]
+        for i in range(X.shape[1]):
+            if len(X[train_mask][:, i].unique()) != len(X[:, i].unique()):
+                print("resampling train mask")
+                break
+        else:
+            break
     test_mask = ~train_mask
     return train_mask, test_mask
 
@@ -247,12 +254,11 @@ def train_test_split_sampled(X, train_frac, seed=1):
     Samples are assigned to train by a bernoulli distribution with probability train_frac.
     """
     torch.manual_seed(seed)
-    train_mask = torch.rand(X.shape[0]) < train_frac
     # assert that we have each X at least once in the training set
     while True:
+        train_mask = torch.rand(X.shape[0]) < train_frac
         for i in range(X.shape[1]):
             if len(X[train_mask][:, i].unique()) != len(X[:, i].unique()):
-                train_mask = torch.rand(X.shape[0]) < train_frac
                 print("Resampling train mask")
                 break
         else:
@@ -298,7 +304,7 @@ def prepare_nuclear_data(config: argparse.Namespace, recreate: bool = False):
         )
 
     #split
-    train_mask, test_mask = train_test_split_sampled(X, config.TRAIN_FRAC, seed=config.SEED)
+    train_mask, test_mask = train_test_split_exact(X, config.TRAIN_FRAC, seed=config.SEED)
 
     # don't consider nuclei with high uncertainty in binding energy
     # BUT only for evaluation!

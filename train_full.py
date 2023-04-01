@@ -3,7 +3,7 @@ import tqdm
 import torch
 import argparse
 import mup
-from data import prepare_nuclear_data, train_test_split, prepare_modular_data
+from data import prepare_nuclear_data, prepare_modular_data
 from model import get_model_and_optim
 from loss import (
     loss_by_task,
@@ -25,13 +25,10 @@ def train(task: Task, args: argparse.Namespace, basedir: str):
     best_model = None
     best_loss = float("inf")
 
-    train_mask, val_mask = train_test_split(
-        data, train_frac=args.TRAIN_FRAC, seed=args.SEED
-    )
-    y_train = data.y[train_mask]
-    y_val = data.y[val_mask]
-    X_train = data.X[train_mask]
-    X_val = data.X[val_mask]
+    y_train = data.y[data.train_mask]
+    y_val = data.y[data.val_mask]
+    X_train = data.X[data.train_mask]
+    X_val = data.X[data.val_mask]
 
     model, optimizer = get_model_and_optim(data, args)
     # optimizer = ESAM(optimizer.param_groups, optimizer)
@@ -63,7 +60,7 @@ def train(task: Task, args: argparse.Namespace, basedir: str):
 
         out = model(data.X)
         train_losses = loss_by_task(
-            out[train_mask], y_train, data.output_map, args
+            out[data.train_mask], y_train, data.output_map, args
         )
         train_loss = weights * train_losses
         l_before = train_loss.clone().detach()
@@ -108,7 +105,7 @@ def train(task: Task, args: argparse.Namespace, basedir: str):
             with torch.no_grad():
                 model.eval()
                 train_metrics = metric_by_task(
-                    out[train_mask],
+                    out[data.train_mask],
                     X_train,
                     y_train,
                     data.output_map,
@@ -116,7 +113,7 @@ def train(task: Task, args: argparse.Namespace, basedir: str):
                     qt=data.regression_transformer,
                 )
                 val_metrics = metric_by_task(
-                    out[val_mask],
+                    out[data.val_mask],
                     X_val,
                     y_val,
                     data.output_map,
@@ -124,7 +121,7 @@ def train(task: Task, args: argparse.Namespace, basedir: str):
                     qt=data.regression_transformer,
                 )
                 val_losses = loss_by_task(
-                    out[val_mask], y_val, data.output_map, args
+                    out[data.val_mask], y_val, data.output_map, args
                 ).mean(dim=1)
                 val_loss = (weights * val_losses).mean()
                 # keep track of the best model

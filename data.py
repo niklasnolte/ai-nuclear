@@ -12,6 +12,7 @@ import torch
 import argparse
 from collections import namedtuple, OrderedDict
 
+
 def apply_to_df_col(column):
     def wrapper(fn):
         return lambda df: df[column].astype(str).apply(fn)
@@ -126,7 +127,10 @@ def get_isospin_from(string):
 
 
 def get_binding_energy_from(df):
-    return df.binding.replace(" ", "nan").astype(float)# * (df.z + df.n)
+    binding = df.binding.replace(" ", "nan").astype(float)
+    # binding[df.binding_sys == "Y"] = float("nan")
+    # binding[df.binding_unc * (df.z + df.n) > 100] = float("nan")
+    return binding
 
 
 def get_radius_from(df):
@@ -182,19 +186,65 @@ def get_nuclear_data(recreate=False):
         df = lc_read_csv("fields=ground_states&nuclides=all")
         df.to_csv("data/ground_states.csv", index=False)
     else:
-        df = pd.read_csv("data/ground_states.csv")
+        # df = pd.read_csv("data/ground_states.csv")
+        df2 = pd.read_csv("data/ame2020.csv").set_index(["z", "n"])
+        df2 = df2[~df2.index.duplicated(keep="first")]
+        df = pd.read_csv("data/ground_states.csv").set_index(["z", "n"])
+        df["binding_unc"] = df2.binding_unc
+        df["binding_sys"] = df2.binding_sys
+        df.reset_index(inplace=True)
 
-    df = df[(df.z > 8) & (df.n > 8)]  # TODO remove this line
+    df = df[(df.z > 8) & (df.n > 8)]
     return df
 
 
 Data = namedtuple(
     "Data",
-    ["X", "y", "vocab_size", "output_map", "regression_transformer"],
+    [
+        "X",
+        "y",
+        "vocab_size",
+        "output_map",
+        "regression_transformer",
+        "train_mask",
+        "val_mask",
+    ],
 )
 
 
-def prepare_nuclear_data(config : argparse.Namespace, recreate : bool =False):
+def train_test_split_exact(X, train_frac, seed=1):
+    """
+    Take exactly train_frac of the data as training data.
+    """
+    # TODO shuffle data when using SGD
+    torch.manual_seed(seed)
+    train_mask = torch.ones(X.shape[0], dtype=torch.bool)
+    train_mask[int(train_frac * X.shape[0]) :] = False
+    train_mask = train_mask[torch.randperm(X.shape[0])]
+    test_mask = ~train_mask
+    return train_mask, test_mask
+
+
+def train_test_split_sampled(X, train_frac, seed=1):
+    """
+    Samples are assigned to train by a bernoulli distribution with probability train_frac.
+    """
+    torch.manual_seed(seed)
+    train_mask = torch.rand(X.shape[0]) < train_frac
+    # assert that we have each X at least once in the training set
+    while True:
+        for i in range(X.shape[1]):
+            if len(X[train_mask][:, i].unique()) != len(X[:, i].unique()):
+                train_mask = torch.rand(X.shape[0]) < train_frac
+                print("Resampling train mask")
+                break
+        else:
+            break
+    test_mask = ~train_mask
+    return train_mask, test_mask
+
+
+def prepare_nuclear_data(config: argparse.Namespace, recreate: bool = False):
     """Prepare data to be used for training. Transforms data to tensors, gets tokens X,targets y,
     vocab size and output map which is a dict of {target:output_shape}. Usually output_shape is 1 for regression
     and n_classes for classification.
@@ -231,81 +281,56 @@ def prepare_nuclear_data(config : argparse.Namespace, recreate : bool =False):
         )
 
     y = torch.tensor(targets[list(output_map.keys())].values).float()
+
+    #split
+    train_mask, test_mask = train_test_split_sampled(X, config.TRAIN_FRAC, seed=config.SEED)
+
     return Data(
         X.to(config.DEV),
         y.to(config.DEV),
         vocab_size,
         output_map,
         feature_transformer,
+        train_mask.to(config.DEV),
+        test_mask.to(config.DEV),
     )
 
 
-def prepare_modular_data(args : argparse.Namespace):
-  # modular arithmetic data
-  # X = cartesian product of [0..p] x [0..p]
-  # y = (x1 op x2) % p
-  X = torch.cartesian_prod(torch.arange(args.P), torch.arange(args.P))
-  output_map = OrderedDict()
-  for target in args.TARGETS_CLASSIFICATION:
-    output_map[target] = args.P
-  for target in args.TARGETS_REGRESSION:
-    output_map[target] = 1
+def prepare_modular_data(args: argparse.Namespace):
+    # modular arithmetic data
+    # X = cartesian product of [0..p] x [0..p]
+    # y = (x1 op x2) % p
+    X = torch.cartesian_prod(torch.arange(args.P), torch.arange(args.P))
+    output_map = OrderedDict()
+    for target in args.TARGETS_CLASSIFICATION:
+        output_map[target] = args.P
+    for target in args.TARGETS_REGRESSION:
+        output_map[target] = 1
 
-  y = torch.zeros(X.shape[0], len(output_map))
-  for idx, target in enumerate(output_map):
-    if target == "add":
-      y[:, idx] = (X[:, 0] + X[:, 1]) % args.P
-    elif target == "subtract":
-      y[:, idx] = (X[:, 0] - X[:, 1]) % args.P
-    elif target == "multiply":
-      y[:, idx] = (X[:, 0] * X[:, 1]) % args.P
-    else:
-      raise ValueError(f"Unknown target {target}")
+    y = torch.zeros(X.shape[0], len(output_map))
+    for idx, target in enumerate(output_map):
+        if target == "add":
+            y[:, idx] = (X[:, 0] + X[:, 1]) % args.P
+        elif target == "subtract":
+            y[:, idx] = (X[:, 0] - X[:, 1]) % args.P
+        elif target == "multiply":
+            y[:, idx] = (X[:, 0] * X[:, 1]) % args.P
+        else:
+            raise ValueError(f"Unknown target {target}")
 
-  feature_transformer = RobustScaler()
-  reg_cols = -len(args.TARGETS_REGRESSION)
-  if reg_cols != 0:
-    y[:,reg_cols:] = feature_transformer.fit_transform(y[:, reg_cols:])
+    feature_transformer = RobustScaler()
+    reg_cols = -len(args.TARGETS_REGRESSION)
+    if reg_cols != 0:
+        y[:, reg_cols:] = feature_transformer.fit_transform(y[:, reg_cols:])
 
-  return Data(
-    X.to(args.DEV),
-    y.to(args.DEV),
-    args.P,
-    output_map,
-    feature_transformer
-  )
+    train_mask, test_mask = train_test_split_sampled(X, args.TRAIN_FRAC, seed=args.SEED)
 
-
-def train_test_split_exact(data, train_frac, seed=1):
-    """
-    Take exactly train_frac of the data as training data.
-    """
-    # TODO shuffle data when using SGD
-    device = data.X.device
-    torch.manual_seed(seed)
-    train_mask = torch.ones(data.X.shape[0], dtype=torch.bool)
-    train_mask[int(train_frac * data.X.shape[0]):] = False
-    train_mask = train_mask[torch.randperm(data.X.shape[0])]
-    test_mask = ~train_mask
-    return train_mask.to(device), test_mask.to(device)
-
-def train_test_split_sampled(data, train_frac, seed=1):
-    """
-    Samples are assigned to train by a bernoulli distribution with probability train_frac.
-    """
-    device = data.X.device
-    torch.manual_seed(seed)
-    train_mask = torch.rand(data.X.shape[0]) < train_frac
-    # assert that we have each X at least once in the training set
-    while True:
-      for i in range(data.X.shape[1]):
-          if len(data.X[train_mask][:,i].unique()) != len(data.X[:,i].unique()):
-            train_mask = torch.rand(data.X.shape[0]) < train_frac
-            print("Resampling train mask")
-            break
-      else:
-        break
-    test_mask = ~train_mask
-    return train_mask.to(device), test_mask.to(device)
-
-train_test_split = train_test_split_sampled
+    return Data(
+      X.to(args.DEV),
+      y.to(args.DEV),
+      args.P,
+      output_map,
+      feature_transformer,
+      train_mask.to(args.DEV),
+      test_mask.to(args.DEV),
+      )

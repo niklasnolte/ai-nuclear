@@ -1,5 +1,5 @@
 import torch
-from data import prepare_nuclear_data, prepare_modular_data, train_test_split
+from data import prepare_nuclear_data, prepare_modular_data
 from config import Task
 import matplotlib.pyplot as plt
 from model import get_model_and_optim
@@ -31,9 +31,6 @@ model.eval()
 
 
 DEVICE = args.DEV
-train_mask, val_mask = train_test_split(
-    data, train_frac=args.TRAIN_FRAC, seed=args.SEED
-)
 
 def get_idx(data, target):
     output_map = data.output_map
@@ -59,11 +56,11 @@ def plot(target="binding_energy", split="both", rescale=False):
     target_true = true[:, target_idx]
     target_pred = pred[:, target_idx]
     if split == "train":
-        split_mask = train_mask
+        split_mask = data.train_mask
     elif split == "val":
-        split_mask = val_mask
+        split_mask = data.val_mask
     elif split == "both":
-        split_mask = train_mask | val_mask
+        split_mask = data.train_mask | data.val_mask
     else:
         raise ValueError(f"Unknown split {split}")
     nanmask = ~target_true.isnan()
@@ -92,4 +89,4 @@ def plot(target="binding_energy", split="both", rescale=False):
     plt.show()
 
 if __name__ == "__main__":
-    plot("binding_energy", split="train", rescale=True)
+    plot("binding_energy", split="val", rescale=True)

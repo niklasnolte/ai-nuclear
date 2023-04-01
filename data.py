@@ -12,6 +12,24 @@ import torch
 import argparse
 from collections import namedtuple, OrderedDict
 
+def delta(Z,N):
+    A = Z+N
+    aP = 11.18
+    delta = aP*A**(-1/2)
+    delta[(Z%2==1) & (N%2==1)] *= -1
+    delta[(Z%2==0) & (N%2==1)] = 0
+    delta[(Z%2==1) & (N%2==0)] = 0
+    return delta
+
+def semi_empirical_mass_formula(Z,N):
+  A = N+Z
+  aV = 15.75
+  aS = 17.8
+  aC = 0.711
+  aA = 23.7
+  Eb = aV*A - aS*A**(2/3) - aC*Z*(Z-1)/(A**(1/3)) - aA*(N-Z)**2/A + delta(Z,N)
+  Eb[Eb<0] = 0
+  return Eb/A * 1000 #keV
 
 def apply_to_df_col(column):
     def wrapper(fn):
@@ -128,7 +146,7 @@ def get_isospin_from(string):
 
 def get_binding_energy_from(df):
     binding = df.binding.replace(" ", "nan").astype(float)
-    return binding
+    return binding - semi_empirical_mass_formula(df.z, df.n)
 
 
 def get_radius_from(df):

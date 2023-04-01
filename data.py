@@ -128,8 +128,6 @@ def get_isospin_from(string):
 
 def get_binding_energy_from(df):
     binding = df.binding.replace(" ", "nan").astype(float)
-    # binding[df.binding_sys == "Y"] = float("nan")
-    # binding[df.binding_unc * (df.z + df.n) > 100] = float("nan")
     return binding
 
 
@@ -168,6 +166,7 @@ def get_targets(df):
     targets["sp"] = get_sp_from(df)
     # isospin as float
     targets["isospin"] = get_isospin_from(df)
+
     return targets
 
 
@@ -254,7 +253,8 @@ def prepare_nuclear_data(config: argparse.Namespace, recreate: bool = False):
         recreate (bool, optional): Force re-download of data and save to csv. Defaults to False.
     returns (Data): namedtuple of X, y, vocab_size, output_map, quantile_transformer
     """
-    targets = get_targets(get_nuclear_data(recreate=recreate))
+    df = get_nuclear_data(recreate=recreate)
+    targets = get_targets(df)
 
     X = torch.tensor(targets[["z", "n"]].values).long()
 
@@ -273,17 +273,21 @@ def prepare_nuclear_data(config: argparse.Namespace, recreate: bool = False):
         output_map[target] = 1
 
     reg_columns = list(config.TARGETS_REGRESSION)
-    # qt = QuantileTransformer(output_distribution="uniform")
     feature_transformer = StandardScaler()
     if len(reg_columns) > 0:
         targets[reg_columns] = feature_transformer.fit_transform(
             targets[reg_columns].values
         )
 
-    y = torch.tensor(targets[list(output_map.keys())].values).float()
-
     #split
     train_mask, test_mask = train_test_split_sampled(X, config.TRAIN_FRAC, seed=config.SEED)
+
+    # don't consider nuclei with high uncertainty in binding energy
+    # BUT only for evaluation!
+    except_binding = (df.binding_unc * (df.z + df.n) > 100).values
+    targets["binding_energy"][test_mask.numpy() & except_binding] = np.nan
+
+    y = torch.tensor(targets[list(output_map.keys())].values).float()
 
     return Data(
         X.to(config.DEV),

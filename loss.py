@@ -140,6 +140,17 @@ def get_balanced_accuracy(output: torch.Tensor, target: torch.Tensor) -> torch.T
     return ((output == target).float() * class_weight[target]).sum()
 
 
+def get_eval_fn_for(task_name):
+  if task_name == "binding_energy":
+    def eval_fn(output, input_):
+      nprotons = input_[:, 0]
+      nneutrons = input_[:, 1]
+      return output * (nprotons + nneutrons)
+    return eval_fn
+  else:
+    return lambda x, _: x
+
+
 def metric_by_task(
     output: torch.Tensor,
     inputs: torch.Tensor,
@@ -161,8 +172,6 @@ def metric_by_task(
 
     returns accuracy: [targets_dim]
     """
-    nprotons = inputs[:, 0]
-    nneutrons = inputs[:, 1]
     # WARNING: classification comes first
     target_names = list(output_map.keys())
     # reshape output according to output_map and return tuple by regression and classification
@@ -198,11 +207,9 @@ def metric_by_task(
         mask = ~torch.isnan(targets[:, target_column])
         masked_target = targets[:, target_column][mask]
         out = output[:, output_column]
-        if False:#target_name == "binding_energy":
-          masked_out = out[mask] * (nprotons[mask] + nneutrons[mask])
-          masked_target = masked_target * (nprotons[mask] + nneutrons[mask])
-        else:
-          masked_out = out[mask]
+        eval_fn = get_eval_fn_for(target_name)
+        masked_out = eval_fn(out[mask], inputs[mask])
+        masked_target = eval_fn(masked_target, inputs[mask])
         metrics[target_column] = F.mse_loss(masked_out, masked_target.float()).sqrt()
         output_column += 1
         target_column += 1

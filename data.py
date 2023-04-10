@@ -229,7 +229,7 @@ Data = namedtuple(
 )
 
 
-def train_test_split_exact(X, train_frac, seed=1):
+def _train_test_split_exact(X, train_frac, n_embedding_inputs, seed=1):
     """
     Take exactly train_frac of the data as training data.
     """
@@ -239,7 +239,7 @@ def train_test_split_exact(X, train_frac, seed=1):
         train_mask = torch.ones(X.shape[0], dtype=torch.bool)
         train_mask[int(train_frac * X.shape[0]) :] = False
         train_mask = train_mask[torch.randperm(X.shape[0])]
-        for i in range(X.shape[1]):
+        for i in range(n_embedding_inputs):
             if len(X[train_mask][:, i].unique()) != len(X[:, i].unique()):
                 print("resampling train mask")
                 break
@@ -249,7 +249,7 @@ def train_test_split_exact(X, train_frac, seed=1):
     return train_mask, test_mask
 
 
-def train_test_split_sampled(X, train_frac, seed=1):
+def _train_test_split_sampled(X, train_frac, n_embedding_inputs, seed=1):
     """
     Samples are assigned to train by a bernoulli distribution with probability train_frac.
     """
@@ -257,7 +257,7 @@ def train_test_split_sampled(X, train_frac, seed=1):
     # assert that we have each X at least once in the training set
     while True:
         train_mask = torch.rand(X.shape[0]) < train_frac
-        for i in range(X.shape[1]):
+        for i in range(n_embedding_inputs):
             if len(X[train_mask][:, i].unique()) != len(X[:, i].unique()):
                 print("Resampling train mask")
                 break
@@ -280,7 +280,20 @@ def prepare_nuclear_data(config: argparse.Namespace, recreate: bool = False):
     df = get_nuclear_data(recreate=recreate)
     targets = get_targets(df)
 
-    X = torch.tensor(targets[["z", "n"]].values).long()
+    X = torch.tensor(targets[["z", "n"]].values)
+    n_embedding_inputs = X.shape[1]
+
+    # add semi empirical mass formula as feature
+    semf = semi_empirical_mass_formula(*X.T).view(-1, 1)
+    # add z and n as features (not embedded)
+    z = torch.tensor(targets.z.values).view(-1, 1).float()
+    n = torch.tensor(targets.n.values).view(-1, 1).float()
+    X_ne = torch.cat([z, n, (z-n)**2, (z+n)%2], dim=1)
+    X_ne = (X_ne.float() - X_ne.mean(dim=0)) / X_ne.std(dim=0)
+
+    X = torch.cat(
+        [X, X_ne], dim=1
+    ).float()
 
     # classification targets increasing integers
     for col in config.TARGETS_CLASSIFICATION:
@@ -304,7 +317,7 @@ def prepare_nuclear_data(config: argparse.Namespace, recreate: bool = False):
         )
 
     #split
-    train_mask, test_mask = train_test_split_exact(X, config.TRAIN_FRAC, seed=config.SEED)
+    train_mask, test_mask = _train_test_split_exact(X, config.TRAIN_FRAC, n_embedding_inputs, seed=config.SEED)
 
     # don't consider nuclei with high uncertainty in binding energy
     # BUT only for evaluation!
@@ -329,6 +342,7 @@ def prepare_modular_data(args: argparse.Namespace):
     # X = cartesian product of [0..p] x [0..p]
     # y = (x1 op x2) % p
     X = torch.cartesian_prod(torch.arange(args.P), torch.arange(args.P))
+    n_embedding_inputs = X.shape[1]
     output_map = OrderedDict()
     for target in args.TARGETS_CLASSIFICATION:
         output_map[target] = args.P
@@ -351,12 +365,12 @@ def prepare_modular_data(args: argparse.Namespace):
     if reg_cols != 0:
         y[:, reg_cols:] = feature_transformer.fit_transform(y[:, reg_cols:])
 
-    train_mask, test_mask = train_test_split_sampled(X, args.TRAIN_FRAC, seed=args.SEED)
+    train_mask, test_mask = _train_test_split_sampled(X, args.TRAIN_FRAC, n_embedding_inputs, seed=args.SEED)
 
     return Data(
       X.to(args.DEV),
       y.to(args.DEV),
-      args.P,
+      (args.P, args.P),
       output_map,
       feature_transformer,
       train_mask.to(args.DEV),

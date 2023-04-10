@@ -4,40 +4,49 @@ from torch.nn import functional as F
 from functools import partial
 import mup
 import warnings
-from typing import Callable, Union, Iterable
+from typing import Callable, Iterable
 from data import Data
 
 
 class Base(nn.Module):
     def __init__(
         self,
-        vocab_size: Union[int, Iterable],
+        vocab_size: Iterable,
+        non_embedded_input_dim: int,
         hidden_dim: int,
         embedding_dim: int = None,
+        share_embeddings: bool = False,
     ):
         super().__init__()
-        if isinstance(vocab_size, int):
-            vocab_size = [vocab_size]
+        self.non_embedded_input_dim = non_embedded_input_dim
         self.vocab_size = vocab_size
         self.embedding_dim = embedding_dim or hidden_dim
-        self.emb = nn.ParameterList(
-            [nn.Embedding(v, self.embedding_dim).weight for v in self.vocab_size]
-        )
+        self.share_embeddings = share_embeddings
+        self.input_dim = self.embedding_dim * len(vocab_size) + non_embedded_input_dim
+        # we are using weights here because that is more convenient for dimn_regularization
+        if share_embeddings:
+          self.emb = nn.Embedding(vocab_size[0], self.embedding_dim).weight
+        else:
+          self.emb = nn.ParameterList(
+              [nn.Embedding(v, self.embedding_dim).weight for v in self.vocab_size]
+          )
         self.hidden_dim = hidden_dim
 
     def forward_with_embeddings(self, x, embs):
         # x = self.embed_input(x, embs)
-        # continue here
+        # implement this
         raise NotImplementedError()
 
     def forward(self, x):
         return self.forward_with_embeddings(x, self.emb)
 
     def embed_input(self, x, embs):
-        if len(embs) == 1:
-            embs = [embs[0][x[:, i]] for i in range(x.shape[1])]
+        if self.share_embeddings:
+            embs = [embs[x[:, i].long()] for i,_ in enumerate(self.vocab_size)]
         else:
-            embs = [embs[i][x[:, i]] for i in range(len(embs))]
+            embs = [embs[i][x[:, i].long()] for i,_ in enumerate(self.vocab_size)]
+        if self.non_embedded_input_dim > 0:
+            embs.append(x[:, len(self.vocab_size) :])
         return torch.cat(embs, dim=1)  # [ batch_size, 2 * hidden_dim ]
 
 
@@ -65,7 +74,7 @@ class ResidualBlock(nn.Module):
 
 class BaselineModel(Base):
     def __init__(
-        self, vocab_size: Union[int, Iterable], hidden_dim: int, output_dim: int
+        self, vocab_size: Iterable, non_embedded_input_dim: int, hidden_dim: int, output_dim: int
     ):
         """
         :param vocab_size: number of tokens in the vocabulary,
@@ -74,17 +83,12 @@ class BaselineModel(Base):
         :param output_dim: dimension of the output layer
         """
 
-        super().__init__(vocab_size, hidden_dim)
+        super().__init__(vocab_size, non_embedded_input_dim, hidden_dim)
 
         self.nonlinear = nn.Sequential(
-            nn.Linear(2 * self.embedding_dim, hidden_dim),
+            nn.Linear(self.input_dim, hidden_dim),
             nn.SiLU(),
-            nn.Linear(hidden_dim, hidden_dim),
-            # ResidualBlock(hidden_dim, dropout=0),
-            # nn.SiLU(),
-            # ResidualBlock(hidden_dim, dropout=0),
-            # nn.SiLU(),
-            # ResidualBlock(hidden_dim, dropout=0),
+            nn.Linear(self.hidden_dim, hidden_dim),
             nn.SiLU(),
         )
         self.readout = nn.Linear(hidden_dim, output_dim)
@@ -99,7 +103,8 @@ class BaselineModel(Base):
 class SplitupModel(Base):
     def __init__(
         self,
-        vocab_size: Union[int, Iterable],
+        vocab_size: Iterable,
+        non_embedded_input_dim: int,
         hidden_dim: int,
         output_dim: Iterable[int],
     ):
@@ -110,7 +115,7 @@ class SplitupModel(Base):
         :param output_dim: multiple dimensions of the output layers (later concatenated)
         """
 
-        super().__init__(vocab_size, hidden_dim)
+        super().__init__(vocab_size, non_embedded_input_dim, hidden_dim)
 
         self.n_tasks = len(output_dim)
 
@@ -118,7 +123,7 @@ class SplitupModel(Base):
         self.nonlinears = nn.ModuleList(
             [
                 nn.Sequential(
-                    nn.Linear(len(self.vocab_size) * self.embedding_dim, d_model),
+                    nn.Linear(self.input_dim, d_model),
                     nn.SiLU(),
                     nn.LayerNorm(d_model, elementwise_affine=False),
                     nn.Linear(d_model, d_model),
@@ -148,7 +153,7 @@ class GatingNetwork(nn.Module):
 
 class MoEModel(Base):
     def __init__(
-        self, vocab_size: Union[int, Iterable], hidden_dim: int, output_dim: int
+        self, vocab_size: Iterable, non_embedded_input_dim: int, hidden_dim: int, output_dim: int
     ):
         """
         :param vocab_size: number of tokens in the vocabulary,
@@ -157,7 +162,7 @@ class MoEModel(Base):
         :param output_dim: dimension of the output layer
         """
 
-        super().__init__(vocab_size, hidden_dim)
+        super().__init__(vocab_size, non_embedded_input_dim, hidden_dim)
 
         self.num_experts = 4
 
@@ -170,11 +175,11 @@ class MoEModel(Base):
 
         self.experts = nn.ModuleList(
             [
-                expert(2 * hidden_dim, hidden_dim, output_dim)
+                expert(self.input_dim, hidden_dim, output_dim)
                 for _ in range(self.num_experts)
             ]
         )
-        self.gating_network = GatingNetwork(2 * hidden_dim, self.num_experts)
+        self.gating_network = GatingNetwork(self.input_dim, self.num_experts)
         print(sum(p.numel() for p in self.parameters() if p.requires_grad))
 
     def forward_with_embeddings(self, x, embs):
@@ -282,6 +287,7 @@ def get_model_and_optim(data: Data, config):
     model_fn = partial(
         model_fn,
         vocab_size=data.vocab_size,
+        non_embedded_input_dim=data.X.shape[1] - len(data.vocab_size),
         output_dim=output_dim,
     )
     model = make_mup(model_fn, hidden_dim=config.HIDDEN_DIM).to(config.DEV)
@@ -295,7 +301,8 @@ def get_model_and_optim(data: Data, config):
             "weight_decay": config.WD,
         },
     ]
-    optimizer = mup.MuSGD(param_groups, lr=config.LR, momentum=.99, nesterov=True)
+    # optimizer = mup.MuSGD(param_groups, lr=config.LR, momentum=.99, nesterov=True)
+    optimizer = mup.MuAdam(param_groups, lr=config.LR)
     # split into weights biases
     # optimizer = torch.optim.AdamW(param_groups, lr=config.LR, amsgrad=True)
     # optimizer = torch.optim.AdamW(model, lr=config.LR, amsgrad=True)

@@ -2,7 +2,6 @@ import os
 import tqdm
 import torch
 import argparse
-import mup
 from data import prepare_nuclear_data, prepare_modular_data
 from model import get_model_and_optim
 from loss import (
@@ -13,7 +12,6 @@ from loss import (
     regularize_embedding_dim,
 )
 from config import Task
-from esam import ESAM
 
 
 def train(task: Task, args: argparse.Namespace, basedir: str):
@@ -27,11 +25,8 @@ def train(task: Task, args: argparse.Namespace, basedir: str):
 
     y_train = data.y[data.train_mask]
     y_val = data.y[data.val_mask]
-    X_train = data.X[data.train_mask]
-    X_val = data.X[data.val_mask]
 
     model, optimizer = get_model_and_optim(data, args)
-    # optimizer = ESAM(optimizer.param_groups, optimizer)
 
     if args.WANDB:
         import wandb
@@ -45,82 +40,39 @@ def train(task: Task, args: argparse.Namespace, basedir: str):
     else:
         bar = range(args.EPOCHS)
 
+    Xs_task = [data.X.clone() for _ in data.output_map]
+    for taski, task in enumerate(data.output_map):
+        Xs_task[taski][:,len(data.vocab_size)-1] = torch.ones(data.X.shape[0]) * taski
+
     for epoch in range(args.EPOCHS):
-        # if epoch % 50000 == 0 and epoch != 0:
-        #   # reinitialize weights to match the current norm
-        #   for param in model.parameters():
-        #     range_ = param.std().item() * 12 ** .5 / 2
-        #     torch.nn.init.uniform_(param, -range_, range_)
-        # Train
         model.train()
         optimizer.zero_grad()
-        if isinstance(optimizer, ESAM):
-          model.require_backward_grad_sync = False
-          model.require_forward_param_sync = True
+        train_loss = torch.zeros(len(data.output_map)).to(args.DEV)
+        out = torch.zeros(data.y.shape).to(args.DEV)
+        out_col = 0
+        for taski, task in enumerate(data.output_map):
+          # make a task specific X (task feature)
+          out_task = model(Xs_task[taski])
+          out_size = data.output_map[task]
+          slice_ = slice(out_col, out_col + out_size)
+          out[:, slice_] = out_task[:, slice_]
+          out_col += out_size
 
-        out = model(data.X)
         train_losses = loss_by_task(
             out[data.train_mask], y_train, data.output_map, args
         )
-        if args.RANDOM_WEIGHTS > 0:
-            weight_scaler = random_softmax(weights.shape, scale=args.RANDOM_WEIGHTS).to(
-                args.DEV
-            )
-        else:
-            weight_scaler = 1
-        # TODO i don't think that properly works together with ESAM
-        if args.DIMREG_COEFF > 0:
-            dimreg = regularize_embedding_dim(
-                model, data.X[data.train_mask], data.y[data.train_mask], data.output_map, args
-            )
-            train_losses += args.DIMREG_COEFF * dimreg
+        train_loss[taski] = (weights[taski] * train_losses).mean()
 
-        train_loss = weights * train_losses * weight_scaler
-
-        l_before = train_loss.clone().detach()
         train_losses = train_losses.mean(dim=1)
-        train_loss = train_loss.mean()
-        train_loss.backward()
-
-        if isinstance(optimizer, ESAM):
-            # first step to w + e(w)
-            optimizer.first_step(True)
-
-            with torch.no_grad():
-                train_losses_after = loss_by_task(
-                    model(X_train), y_train, data.output_map, args
-                )
-                l_after = weights * train_losses_after
-                instance_sharpness = l_after - l_before
-
-                # codes for sorting
-                if optimizer.gamma >= 0.99:
-                    indices = range(len(y_train))
-                else:
-                    position = int(len(y_train) * optimizer.gamma)
-                    cutoff, _ = torch.topk(instance_sharpness, position)
-                    cutoff = cutoff[-1]
-                    # cutoff = 0
-                    # select top k%
-                    indices = [instance_sharpness > cutoff]
-
-            model.require_backward_grad_sync = True
-            model.require_forward_param_sync = False
-            selected_losses = loss_by_task(
-                model(X_train[indices]), y_train[indices], data.output_map, args
-            )
-            selected_loss = (weights * selected_losses).mean()
-            selected_loss.backward()
-            optimizer.second_step(True)
-        else:
-            optimizer.step()
+        train_loss.mean().backward()
+        optimizer.step()
 
         if epoch % args.LOG_FREQ == 0:
             with torch.no_grad():
                 model.eval()
                 train_metrics = metric_by_task(
                     out[data.train_mask],
-                    X_train,
+                    data.X[data.train_mask],
                     y_train,
                     data.output_map,
                     args,
@@ -128,7 +80,7 @@ def train(task: Task, args: argparse.Namespace, basedir: str):
                 )
                 val_metrics = metric_by_task(
                     out[data.val_mask],
-                    X_val,
+                    data.X[data.val_mask],
                     y_val,
                     data.output_map,
                     args,

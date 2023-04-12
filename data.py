@@ -12,24 +12,33 @@ import torch
 import argparse
 from collections import namedtuple, OrderedDict
 
-def delta(Z,N):
-    A = Z+N
+
+def delta(Z, N):
+    A = Z + N
     aP = 11.18
-    delta = aP*A**(-1/2)
-    delta[(Z%2==1) & (N%2==1)] *= -1
-    delta[(Z%2==0) & (N%2==1)] = 0
-    delta[(Z%2==1) & (N%2==0)] = 0
+    delta = aP * A ** (-1 / 2)
+    delta[(Z % 2 == 1) & (N % 2 == 1)] *= -1
+    delta[(Z % 2 == 0) & (N % 2 == 1)] = 0
+    delta[(Z % 2 == 1) & (N % 2 == 0)] = 0
     return delta
 
-def semi_empirical_mass_formula(Z,N):
-  A = N+Z
-  aV = 15.75
-  aS = 17.8
-  aC = 0.711
-  aA = 23.7
-  Eb = aV*A - aS*A**(2/3) - aC*Z*(Z-1)/(A**(1/3)) - aA*(N-Z)**2/A + delta(Z,N)
-  Eb[Eb<0] = 0
-  return Eb/A * 1000 #keV
+
+def semi_empirical_mass_formula(Z, N):
+    A = N + Z
+    aV = 15.75
+    aS = 17.8
+    aC = 0.711
+    aA = 23.7
+    Eb = (
+        aV * A
+        - aS * A ** (2 / 3)
+        - aC * Z * (Z - 1) / (A ** (1 / 3))
+        - aA * (N - Z) ** 2 / A
+        + delta(Z, N)
+    )
+    Eb[Eb < 0] = 0
+    return Eb / A * 1000  # keV
+
 
 def apply_to_df_col(column):
     def wrapper(fn):
@@ -281,19 +290,27 @@ def prepare_nuclear_data(config: argparse.Namespace, recreate: bool = False):
     targets = get_targets(df)
 
     X = torch.tensor(targets[["z", "n"]].values)
-    n_embedding_inputs = X.shape[1]
-
     # add semi empirical mass formula as feature
     semf = semi_empirical_mass_formula(*X.T).view(-1, 1)
+
+    # append zeros as third feature (they are gonna be filled by task specific embeddings)
+    X = torch.cat([X, torch.zeros(X.shape[0], 1)], dim=1)
+    n_embedding_inputs = X.shape[1]
+
     # add z and n as features (not embedded)
     z = torch.tensor(targets.z.values).view(-1, 1).float()
     n = torch.tensor(targets.n.values).view(-1, 1).float()
-    X_ne = torch.cat([z, n, (z-n)**2, (z+n)%2], dim=1)
+    X_ne = torch.cat([z, n, (z - n) ** 2, (z + n) % 2], dim=1)
     X_ne = (X_ne.float() - X_ne.mean(dim=0)) / X_ne.std(dim=0)
 
-    X = torch.cat(
-        [X, X_ne], dim=1
-    ).float()
+    X = torch.cat([X, X_ne], dim=1).float()
+
+    # each task is encoded as another symbol to learn optimal weight sharing
+    vocab_size = (
+        targets.z.max() + 1,
+        targets.n.max() + 1,
+        len(config.TARGETS_CLASSIFICATION) + len(config.TARGETS_REGRESSION),
+    )
 
     # classification targets increasing integers
     for col in config.TARGETS_CLASSIFICATION:
@@ -301,7 +318,6 @@ def prepare_nuclear_data(config: argparse.Namespace, recreate: bool = False):
         # put nans back
         targets[col] = targets[col].replace(-1, np.nan)
 
-    vocab_size = (targets.z.max() + 1, targets.n.max() + 1)
     output_map = OrderedDict()
     for target in config.TARGETS_CLASSIFICATION:
         output_map[target] = targets[target].nunique()
@@ -316,13 +332,15 @@ def prepare_nuclear_data(config: argparse.Namespace, recreate: bool = False):
             targets[reg_columns].values
         )
 
-    #split
-    train_mask, test_mask = _train_test_split_exact(X, config.TRAIN_FRAC, n_embedding_inputs, seed=config.SEED)
+    # split
+    train_mask, test_mask = _train_test_split_exact(
+        X, config.TRAIN_FRAC, n_embedding_inputs, seed=config.SEED
+    )
 
     # don't consider nuclei with high uncertainty in binding energy
     # BUT only for evaluation!
     except_binding = (df.binding_unc * (df.z + df.n) > 100).values
-    targets["binding_energy"][test_mask.numpy() & except_binding] = np.nan
+    targets.loc[test_mask.numpy() & except_binding, "binding_energy"] = np.nan
 
     y = torch.tensor(targets[list(output_map.keys())].values).float()
 
@@ -365,14 +383,16 @@ def prepare_modular_data(args: argparse.Namespace):
     if reg_cols != 0:
         y[:, reg_cols:] = feature_transformer.fit_transform(y[:, reg_cols:])
 
-    train_mask, test_mask = _train_test_split_sampled(X, args.TRAIN_FRAC, n_embedding_inputs, seed=args.SEED)
+    train_mask, test_mask = _train_test_split_sampled(
+        X, args.TRAIN_FRAC, n_embedding_inputs, seed=args.SEED
+    )
 
     return Data(
-      X.to(args.DEV),
-      y.to(args.DEV),
-      (args.P, args.P),
-      output_map,
-      feature_transformer,
-      train_mask.to(args.DEV),
-      test_mask.to(args.DEV),
-      )
+        X.to(args.DEV),
+        y.to(args.DEV),
+        (args.P, args.P),
+        output_map,
+        feature_transformer,
+        train_mask.to(args.DEV),
+        test_mask.to(args.DEV),
+    )

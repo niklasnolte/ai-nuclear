@@ -191,7 +191,6 @@ class MoEModel(Base):
         return output
 
 
-from transformer import FilteredAttentionTransformer
 from transformer import DefaultTransformer
 
 
@@ -201,14 +200,12 @@ def get_model_fn(config):
     elif config.MODEL == "splitup":
         return SplitupModel
     elif config.MODEL == "transformer":
-        return FilteredAttentionTransformer
-    elif config.MODEL == "deftrafo":
         return DefaultTransformer
     elif config.MODEL == "moe":  # Add a new condition for the MoE model
         return MoEModel
     else:
         raise ValueError(
-            f"Unknown model: {config.MODEL}, choose between 'baseline', 'splitup', 'transformer', 'deftrafo', and 'moe'"
+            f"Unknown model: {config.MODEL}, choose between 'baseline', 'splitup', 'transformer' and 'moe'"
         )
 
 

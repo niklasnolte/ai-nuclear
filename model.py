@@ -57,12 +57,13 @@ class ResidualBlock(nn.Module):
         super().__init__()
         self.dropout = nn.Dropout(p=dropout)
         self.ff = nn.Sequential(
-            nn.Linear(d_model, d_model * 2),
+            nn.Linear(d_model, d_model),
             activation(),
-            nn.Linear(d_model * 2, d_model),
+            nn.Linear(d_model, d_model),
         )
         # self.norm = nn.LayerNorm(d_model, elementwise_affine=False)
-        self.norm = nn.BatchNorm1d(d_model, affine=False)
+        # self.norm = nn.BatchNorm1d(d_model, affine=False)
+        self.norm = nn.Identity()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
@@ -88,8 +89,8 @@ class BaselineModel(Base):
         self.nonlinear = nn.Sequential(
             nn.Linear(self.input_dim, hidden_dim),
             nn.SiLU(),
-            nn.Linear(self.hidden_dim, hidden_dim),
-            nn.SiLU(),
+            *[ResidualBlock(hidden_dim) for _ in range(2)],
+            
         )
         self.readout = nn.Linear(hidden_dim, output_dim)
         print(sum(p.numel() for p in self.parameters() if p.requires_grad))

@@ -102,6 +102,17 @@ def loss_by_task(
     return loss
 
 
+class LossWithNan(torch.nn.Module):
+    def __init__(self, loss):
+        super().__init__()
+        self.loss = loss(reduction="sum")
+
+    def forward(self, output: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
+        mask = ~torch.isnan(targets)
+        masked_target = targets[mask]
+        masked_output = output[mask]
+        return self.loss(masked_output, masked_target)
+
 def regularize_embedding_dim(
     model: Base,
     X: torch.Tensor,

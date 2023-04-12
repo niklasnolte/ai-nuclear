@@ -275,6 +275,13 @@ def _train_test_split_sampled(X, train_frac, n_embedding_inputs, seed=1):
     test_mask = ~train_mask
     return train_mask, test_mask
 
+def _train_test_split(size, train_frac, seed=1):
+    torch.manual_seed(seed)
+    train_mask = torch.zeros(size, dtype=torch.bool)
+    train_mask[int(train_frac * size) :] = True
+    train_mask = train_mask[torch.randperm(size)]
+    return train_mask, ~train_mask
+    
 
 def prepare_nuclear_data(config: argparse.Namespace, recreate: bool = False):
     """Prepare data to be used for training. Transforms data to tensors, gets tokens X,targets y,
@@ -290,22 +297,6 @@ def prepare_nuclear_data(config: argparse.Namespace, recreate: bool = False):
     targets = get_targets(df)
 
     X = torch.tensor(targets[["z", "n"]].values)
-    # add semi empirical mass formula as feature
-    semf = semi_empirical_mass_formula(*X.T).view(-1, 1)
-
-    # append zeros as third feature (they are gonna be filled by task specific embeddings)
-    X = torch.cat([X, torch.zeros(X.shape[0], 1)], dim=1)
-    n_embedding_inputs = X.shape[1]
-
-    # add z and n as features (not embedded)
-    z = torch.tensor(targets.z.values).view(-1, 1).float()
-    n = torch.tensor(targets.n.values).view(-1, 1).float()
-    X_ne = torch.cat([z, n, (z - n) ** 2, (z + n) % 2], dim=1)
-    X_ne = (X_ne.float() - X_ne.mean(dim=0)) / X_ne.std(dim=0)
-
-    X = torch.cat([X, X_ne], dim=1).float()
-
-    # each task is encoded as another symbol to learn optimal weight sharing
     vocab_size = (
         targets.z.max() + 1,
         targets.n.max() + 1,
@@ -332,17 +323,17 @@ def prepare_nuclear_data(config: argparse.Namespace, recreate: bool = False):
             targets[reg_columns].values
         )
 
-    # split
-    train_mask, test_mask = _train_test_split_exact(
-        X, config.TRAIN_FRAC, n_embedding_inputs, seed=config.SEED
-    )
-
     # don't consider nuclei with high uncertainty in binding energy
     # BUT only for evaluation!
-    except_binding = (df.binding_unc * (df.z + df.n) > 100).values
-    targets.loc[test_mask.numpy() & except_binding, "binding_energy"] = np.nan
+    # except_binding = (df.binding_unc * (df.z + df.n) > 100).values
+    # targets.loc[test_mask.numpy() & except_binding, "binding_energy"] = np.nan
 
     y = torch.tensor(targets[list(output_map.keys())].values).float()
+
+    # Time to flatten everything
+    X = torch.cartesian_prod(X, torch.arange(len(output_map)))
+    y = y.flatten().view(-1, 1)
+    train_mask, test_mask = _train_test_split(len(y), config.TRAIN_FRAC, seed=config.SEED)
 
     return Data(
         X.to(config.DEV),

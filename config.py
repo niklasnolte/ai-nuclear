@@ -9,14 +9,15 @@ class Task(Enum):
         # FULL_dimnreg2_pcaalpha-1.5_wd0.003_lr0.1_epochs30000_trainfrac0.8_hiddendim256_seed1_modelbaseline_targetsclassificationNone_targetsregressionz:1-n:1-binding_energy:1-radius:1
         dict(
             MODEL=["baseline"],
-            WD=[1e-6],
+            WD=[1e-1],
             LR=[1e-3],
-            EPOCHS=[100000],
-            TRAIN_FRAC=[0.9],
-            HIDDEN_DIM=[25],
+            EPOCHS=[1],
+            TRAIN_FRAC=[0.01],
+            HIDDEN_DIM=[64],
             DIMREG_COEFF=[0.],
             DIMREG_EXP=[-1.5],  # power to weight indices in dimn regularization
-            SEED=[42],
+            SEED=[2],
+            BATCH_SIZE=[4],
             RANDOM_WEIGHTS=[0.], # level of entropy in randomness. 0 is uniform. 1000 is random one hot.
             TARGETS_CLASSIFICATION=[
                 {},

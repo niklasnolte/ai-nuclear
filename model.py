@@ -25,11 +25,11 @@ class Base(nn.Module):
         self.input_dim = self.embedding_dim * len(vocab_size) + non_embedded_input_dim
         # we are using weights here because that is more convenient for dimn_regularization
         if share_embeddings:
-          self.emb = nn.Embedding(vocab_size[0], self.embedding_dim).weight
+            self.emb = nn.Embedding(vocab_size[0], self.embedding_dim).weight
         else:
-          self.emb = nn.ParameterList(
-              [nn.Embedding(v, self.embedding_dim).weight for v in self.vocab_size]
-          )
+            self.emb = nn.ParameterList(
+                [nn.Embedding(v, self.embedding_dim).weight for v in self.vocab_size]
+            )
         self.hidden_dim = hidden_dim
 
     def forward_with_embeddings(self, x, embs):
@@ -42,9 +42,9 @@ class Base(nn.Module):
 
     def embed_input(self, x, embs):
         if self.share_embeddings:
-            embs = [embs[x[:, i].long()] for i,_ in enumerate(self.vocab_size)]
+            embs = [embs[x[:, i].long()] for i, _ in enumerate(self.vocab_size)]
         else:
-            embs = [embs[i][x[:, i].long()] for i,_ in enumerate(self.vocab_size)]
+            embs = [embs[i][x[:, i].long()] for i, _ in enumerate(self.vocab_size)]
         if self.non_embedded_input_dim > 0:
             embs.append(x[:, len(self.vocab_size) :])
         return torch.cat(embs, dim=1)  # [ batch_size, 2 * hidden_dim ]
@@ -52,7 +52,7 @@ class Base(nn.Module):
 
 class ResidualBlock(nn.Module):
     def __init__(
-        self, d_model: int, dropout: float = 0.0, activation: nn.Module = nn.SiLU
+        self, d_model: int, dropout: float = 0.0, activation: nn.Module = nn.ReLU
     ):
         super().__init__()
         self.dropout = nn.Dropout(p=dropout)
@@ -60,6 +60,7 @@ class ResidualBlock(nn.Module):
             nn.Linear(d_model, d_model),
             activation(),
             nn.Linear(d_model, d_model),
+            activation(),
         )
         # self.norm = nn.LayerNorm(d_model, elementwise_affine=False)
         # self.norm = nn.BatchNorm1d(d_model, affine=False)
@@ -75,7 +76,11 @@ class ResidualBlock(nn.Module):
 
 class BaselineModel(Base):
     def __init__(
-        self, vocab_size: Iterable, non_embedded_input_dim: int, hidden_dim: int, output_dim: int
+        self,
+        vocab_size: Iterable,
+        non_embedded_input_dim: int,
+        hidden_dim: int,
+        output_dim: int,
     ):
         """
         :param vocab_size: number of tokens in the vocabulary,
@@ -90,10 +95,8 @@ class BaselineModel(Base):
             nn.Linear(self.input_dim, hidden_dim),
             nn.SiLU(),
             *[ResidualBlock(hidden_dim) for _ in range(2)],
-            
         )
         self.readout = nn.Linear(hidden_dim, output_dim)
-        print(sum(p.numel() for p in self.parameters() if p.requires_grad))
 
     def forward_with_embeddings(self, x, embs):  # embs: [ batch_size, 2 * hidden_dim ]
         x = self.embed_input(x, embs)
@@ -142,7 +145,6 @@ class SplitupModel(Base):
         )  # [ batch_size, sum(output_dim) ]
 
 
-
 class GatingNetwork(nn.Module):
     def __init__(self, input_size, num_experts):
         super(GatingNetwork, self).__init__()
@@ -154,7 +156,11 @@ class GatingNetwork(nn.Module):
 
 class MoEModel(Base):
     def __init__(
-        self, vocab_size: Iterable, non_embedded_input_dim: int, hidden_dim: int, output_dim: int
+        self,
+        vocab_size: Iterable,
+        non_embedded_input_dim: int,
+        hidden_dim: int,
+        output_dim: int,
     ):
         """
         :param vocab_size: number of tokens in the vocabulary,
@@ -192,16 +198,13 @@ class MoEModel(Base):
         return output
 
 
-from transformer import DefaultTransformer
-
-
 def get_model_fn(config):
     if config.MODEL == "baseline":
         return BaselineModel
     elif config.MODEL == "splitup":
         return SplitupModel
-    elif config.MODEL == "transformer":
-        return DefaultTransformer
+    # elif config.MODEL == "transformer":
+    #     return DefaultTransformer
     elif config.MODEL == "moe":  # Add a new condition for the MoE model
         return MoEModel
     else:
@@ -288,20 +291,20 @@ def get_model_and_optim(data: Data, config):
         non_embedded_input_dim=data.X.shape[1] - len(data.vocab_size),
         output_dim=output_dim,
     )
-    model = make_mup(model_fn, hidden_dim=config.HIDDEN_DIM).to(config.DEV)
-    # model = model_fn(hidden_dim=config.HIDDEN_DIM).to(config.DEV)
-    param_groups = [
-        {"params": [p for n, p in model.named_parameters() if "bias" in n.lower()]},
-        {
-            "params": [
-                p for n, p in model.named_parameters() if "bias" not in n.lower()
-            ],
-            "weight_decay": config.WD,
-        },
-    ]
+    # model = make_mup(model_fn, hidden_dim=config.HIDDEN_DIM).to(config.DEV)
+    model = model_fn(hidden_dim=config.HIDDEN_DIM).to(config.DEV)
+    # param_groups = [
+    #     {"params": [p for n, p in model.named_parameters() if "bias" in n.lower()]},
+    #     {
+    #         "params": [
+    #             p for n, p in model.named_parameters() if "bias" not in n.lower()
+    #         ],
+    #         "weight_decay": config.WD,
+    #     },
+    # ]
     # optimizer = mup.MuSGD(param_groups, lr=config.LR, momentum=.99, nesterov=True)
-    optimizer = mup.MuAdam(param_groups, lr=config.LR)
+    # optimizer = mup.MuAdam(param_groups, lr=config.LR)
     # split into weights biases
     # optimizer = torch.optim.AdamW(param_groups, lr=config.LR, amsgrad=True)
-    # optimizer = torch.optim.AdamW(model, lr=config.LR, amsgrad=True)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=config.LR, weight_decay=config.WD)
     return model, optimizer

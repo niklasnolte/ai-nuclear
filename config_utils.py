@@ -61,7 +61,7 @@ def _add_operational_args_(parser: argparse.ArgumentParser):
     parser.add_argument(
         "--ROOT", type=str, default="./results", help="root folder to store models"
     )
-    parser.add_argument("--LOG_FREQ", type=int, default=100, help="log every n epochs")
+    parser.add_argument("--LOG_FREQ", type=int, default=1, help="log every n epochs")
     parser.add_argument(
         "--CKPT_FREQ",
         type=int,

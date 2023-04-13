@@ -7,7 +7,29 @@ import math
 import unittest
 from model import Base
 
+class LossWithNan(torch.nn.Module):
+    def __init__(self, loss):
+        super().__init__()
+        self.loss = loss(reduction="sum")
 
+    def forward(self, output: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
+        mask = ~torch.isnan(targets)
+        masked_target = targets[mask]
+        masked_output = output[mask]
+        return self.loss(masked_output, masked_target)
+
+def accuracy(output: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
+    mask = ~torch.isnan(targets)
+    masked_target = targets[mask]
+    masked_output = output[mask]
+    return (masked_output.argmax(dim=-1) == masked_target).float().mean(dim=0)
+
+def rmse(output: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
+    mask = ~torch.isnan(targets)
+    masked_target = targets[mask]
+    masked_output = output[mask]
+    return torch.sqrt(F.mse_loss(masked_output, masked_target, reduction="none").mean())
+    
 def random_softmax(shape, scale=1):
     x = torch.rand(shape)
     return torch.softmax(scale * x, dim=-1) * x.shape[-1]
@@ -101,17 +123,6 @@ def loss_by_task(
             output_column += 1
     return loss
 
-
-class LossWithNan(torch.nn.Module):
-    def __init__(self, loss):
-        super().__init__()
-        self.loss = loss(reduction="sum")
-
-    def forward(self, output: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
-        mask = ~torch.isnan(targets)
-        masked_target = targets[mask]
-        masked_output = output[mask]
-        return self.loss(masked_output, masked_target)
 
 def regularize_embedding_dim(
     model: Base,

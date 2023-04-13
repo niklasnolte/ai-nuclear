@@ -317,7 +317,7 @@ def prepare_nuclear_data(config: argparse.Namespace, recreate: bool = False):
         output_map[target] = 1
 
     reg_columns = list(config.TARGETS_REGRESSION)
-    feature_transformer = StandardScaler()
+    feature_transformer = MinMaxScaler()
     if len(reg_columns) > 0:
         targets[reg_columns] = feature_transformer.fit_transform(
             targets[reg_columns].values
@@ -331,7 +331,7 @@ def prepare_nuclear_data(config: argparse.Namespace, recreate: bool = False):
     y = torch.tensor(targets[list(output_map.keys())].values).float()
 
     # Time to flatten everything
-    X = torch.cartesian_prod(X, torch.arange(len(output_map)))
+    X = torch.vstack([torch.tensor([*x, task]) for x in X for task in torch.arange(len(output_map))])
     y = y.flatten().view(-1, 1)
     train_mask, test_mask = _train_test_split(len(y), config.TRAIN_FRAC, seed=config.SEED)
 

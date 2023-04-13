@@ -47,7 +47,6 @@ def train(task: Task, args: argparse.Namespace, basedir: str):
     for epoch in range(args.EPOCHS):
         model.train()
         optimizer.zero_grad()
-        train_loss = torch.zeros(len(data.output_map)).to(args.DEV)
         out = torch.zeros(data.y.shape).to(args.DEV)
         out_col = 0
         for taski, task in enumerate(data.output_map):
@@ -61,10 +60,10 @@ def train(task: Task, args: argparse.Namespace, basedir: str):
         train_losses = loss_by_task(
             out[data.train_mask], y_train, data.output_map, args
         )
-        train_loss[taski] = (weights[taski] * train_losses).mean()
 
         train_losses = train_losses.mean(dim=1)
-        train_loss.mean().backward()
+        train_loss = (weights * train_losses).mean()
+        train_loss.backward()
         optimizer.step()
 
         if epoch % args.LOG_FREQ == 0:

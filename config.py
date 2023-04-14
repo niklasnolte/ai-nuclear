@@ -12,7 +12,7 @@ class Task(Enum):
             WD=[1e-1],
             LR=[1e-4],
             EPOCHS=[10000],
-            TRAIN_FRAC=[0.01],
+            TRAIN_FRAC=[0.8],
             HIDDEN_DIM=[64],
             DIMREG_COEFF=[0.],
             DIMREG_EXP=[-1.5],  # power to weight indices in dimn regularization
@@ -25,10 +25,10 @@ class Task(Enum):
             ],
             TARGETS_REGRESSION=[
                 {
-                    # "z": 1,
-                    # "n": 1,
                     "binding_energy": 1,
-                    # "radius": 1,
+                    "z": 1,
+                    "n": 1,
+                    "radius": 1,
                     # "half_life_sec": 1,
                     # "abundance": 1,
                     # "qa": 1,

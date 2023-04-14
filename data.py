@@ -155,7 +155,8 @@ def get_isospin_from(string):
 
 def get_binding_energy_from(df):
     binding = df.binding.replace(" ", "nan").astype(float)
-    return binding - semi_empirical_mass_formula(df.z, df.n)
+    return binding #- semi_empirical_mass_formula(df.z, df.n)
+
 
 
 def get_radius_from(df):
@@ -275,13 +276,14 @@ def _train_test_split_sampled(X, train_frac, n_embedding_inputs, seed=1):
     test_mask = ~train_mask
     return train_mask, test_mask
 
+
 def _train_test_split(size, train_frac, seed=1):
     torch.manual_seed(seed)
     train_mask = torch.zeros(size, dtype=torch.bool)
-    train_mask[int(train_frac * size) :] = True
+    train_mask[: int(train_frac * size)] = True
     train_mask = train_mask[torch.randperm(size)]
     return train_mask, ~train_mask
-    
+
 
 def prepare_nuclear_data(config: argparse.Namespace, recreate: bool = False):
     """Prepare data to be used for training. Transforms data to tensors, gets tokens X,targets y,
@@ -331,9 +333,13 @@ def prepare_nuclear_data(config: argparse.Namespace, recreate: bool = False):
     y = torch.tensor(targets[list(output_map.keys())].values).float()
 
     # Time to flatten everything
-    X = torch.vstack([torch.tensor([*x, task]) for x in X for task in torch.arange(len(output_map))])
+    X = torch.vstack(
+        [torch.tensor([*x, task]) for x in X for task in torch.arange(len(output_map))]
+    )
     y = y.flatten().view(-1, 1)
-    train_mask, test_mask = _train_test_split(len(y), config.TRAIN_FRAC, seed=config.SEED)
+    train_mask, test_mask = _train_test_split(
+        len(y), config.TRAIN_FRAC, seed=config.SEED
+    )
 
     return Data(
         X.to(config.DEV),

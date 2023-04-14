@@ -20,11 +20,7 @@ class Trainer:
         self.args = args
         self.basedir = basedir
         # prepare data
-        self.data = (
-            _ := prepare_modular_data
-            if problem == Task.MODULAR
-            else prepare_nuclear_data
-        )(args)
+        self.data = (prepare_modular_data if problem == Task.MODULAR else prepare_nuclear_data)(args)
         self.loader = DataLoader(
             TensorDataset(
                 self.data.X[self.data.train_mask], self.data.y[self.data.train_mask]
@@ -39,8 +35,8 @@ class Trainer:
         )
         # prepare loss
         self.loss_fn = {
-            "regression": LossWithNan(MSELoss),
-            "classification": LossWithNan(CrossEntropyLoss),
+            "regression": MSELoss(reduction="sum"),
+            "classification": CrossEntropyLoss(reduction="sum"),
         }
         self.metric_fn = {
             "regression": rmse,
@@ -53,7 +49,7 @@ class Trainer:
         self.num_tasks = len(self.data.output_map)
 
     def train(self):
-        bar = (f := tqdm.trange if not self.args.WANDB else range)(self.args.EPOCHS)
+        bar = (tqdm.trange if not self.args.WANDB else range)(self.args.EPOCHS)
         for _ in bar:
             for x, y in self.loader:
                 self.train_step(x, y)
@@ -74,12 +70,14 @@ class Trainer:
     def val_step(self):
         # This serves as the logging step as well
         X, y = self.data.X, self.data.y
+        task = self.all_tasks
         self.model.eval()
         with torch.no_grad():
             out = self.model(X)
             out_ = self._unscale_output(out.clone())  # reg_targets are rescaled
             y_ = self.unscaled_y
-            task = X[:, len(self.data.vocab_size) - 1]
+            # scale binding energy by A
+            out_[:, 0] = out_[:, 0] * (X[:, 0] + X[:, 1])
             metrics_dict = {}
             masks = {"train": self.data.train_mask, "val": self.data.val_mask}
             for name, mask in masks.items():
@@ -87,6 +85,7 @@ class Trainer:
                 metrics, _ = self.metrics_by_task(task[mask], out_[mask], y_[mask])
                 m = self.construct_metrics(losses, metrics, num_samples, name)
                 metrics_dict.update(m)
+
         self.logger.log(metrics_dict)
 
     def construct_metrics(self, losses, metrics, num_samples, prefix):
@@ -129,7 +128,7 @@ class Trainer:
             nonlocal taski, out_idx
             for task_name in task_names:
                 task_out_size = self.data.output_map[task_name]
-                # TODO deal with nans before this point
+                # TODO deal with nans before this point?
                 task_mask = (task == taski) & (~target.isnan().view(-1))
                 num_samples[taski] = task_mask.sum()
                 losses[taski] = loss_fn(
@@ -146,9 +145,8 @@ class Trainer:
     def _unscale_output(self, out):
         """unscales each element y using the inverse transform of the regression_transformer of the task"""
         # out has shape [N * num_tasks, out_shape] and is ordered by sample
-        rescaled = out[:, -len(self.args.TARGETS_REGRESSION) :]
         # [N * num_tasks, num_reg_tasks]
-        rescaled = self._inverse_transform(rescaled)
+        rescaled = self._inverse_transform(out[:, -len(self.args.TARGETS_REGRESSION) :])
         out[:, -len(self.args.TARGETS_REGRESSION) :] = rescaled
         return out
 
@@ -161,7 +159,9 @@ class Trainer:
     @cached_property
     def unscaled_y(self):
         N = len(self.data.y) // len(self.data.output_map)
-        return self._inverse_transform(self.data.y.view(N, -1)).view(-1, 1)
+        y_ = self._inverse_transform(self.data.y.view(N, -1)).view(-1, 1)
+        y_[:, 0] = y_[:, 0] * (self.data.X[:, 0] + self.data.X[:, 1])
+        return y_
 
     @cached_property
     def all_tasks(self):

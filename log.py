@@ -18,7 +18,6 @@ class Logger:
         if epoch % self.args.LOG_FREQ == 0:
             val_loss = metrics["val_loss_combined"]
             # keep track of the best model
-            print(val_loss, self.best_loss)
             if val_loss < self.best_loss:
                 self.best_loss = val_loss
                 self.best_model = self.model.state_dict().copy()

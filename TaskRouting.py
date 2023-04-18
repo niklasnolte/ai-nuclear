@@ -2,8 +2,7 @@ import torch.nn as nn
 import numpy as np
 import torch
 
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-device = torch.device('cpu')
+device = 'cpu'
 
 class TaskRouter(nn.Module):
 
@@ -14,44 +13,39 @@ class TaskRouter(nn.Module):
         sigma (int): Ratio for routed units per task.
     """
 
-    def __init__(self, unit_count, task_count, sigma, name="TaskRouter"):
+    def __init__(self, unit_count, task_count, sigma, device = 'cpu', seed = 1, name="TaskRouter"):
 
         super(TaskRouter, self).__init__()
 
         self.use_routing = True
         self.name = name
         self.unit_count = unit_count
+        self.device = device
         # Just initilize it with 0. This gets changed right after the model is loaded so the value is never used.
         # We store the active mask for the Task Routing Layer here.
         self.active_task = 0
-
+        np.random.seed(seed)
         if sigma!=0:
             self._unit_mapping = torch.ones((task_count, unit_count))
             self._unit_mapping[np.arange(task_count)[:, None], np.random.rand(task_count, unit_count).argsort(1)[:, :sigma]] = 0
             self._unit_mapping = torch.nn.Parameter(self._unit_mapping)
         else:
-            self._unit_mapping = torch.ones((task_count, unit_count))
+            self._unit_mapping = torch.ones((task_count, unit_count)).to(self.device)
             self.use_knockout = False
             print("Not using Routing! Sigma is 0")
 
     def get_unit_mapping(self):
-
         return self._unit_mapping
 
     def set_active_task(self, active_task):
-
         self.active_task = active_task
         return active_task
 
     def forward(self, input):
-        # i imagine input is [batch_size, num_tasks*hidden_dim]
         if not self.use_routing:
             return input
-        indices_selected = (torch.ones(input.shape[0])*self.active_task).long().to(device)
-        print(indices_selected, 'indices selected')
-        mask = torch.index_select(self._unit_mapping, 0, indices_selected).unsqueeze(2).unsqueeze(3)
-        # do we need to unsqueeze here? screwing up hte dimensions
-
+        indices_selected = (torch.ones(input.shape[0])*self.active_task).long().to(self.device)
+        mask = torch.index_select(self._unit_mapping, 0, indices_selected)
 
         input.data.mul_(mask)
 
@@ -65,6 +59,8 @@ if __name__ == '__main__':
     router = TaskRouter(units_in, tasks, int(sigma*units_in))
     print(router._unit_mapping.shape, 'unit mapping shape')
     print(router._unit_mapping, 'unit map')
-    input = torch.rand((2, 64))
-    router.forward(input)
+    input = torch.ones((1, 64))
+    print(input, 'input')
+    input = router.forward(input)
+    print(input, 'output')
     #question: what type of input does task routing want? very confusing

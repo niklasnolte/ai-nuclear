@@ -291,20 +291,20 @@ def get_model_and_optim(data: Data, config):
         non_embedded_input_dim=data.X.shape[1] - len(data.vocab_size),
         output_dim=output_dim,
     )
-    # model = make_mup(model_fn, hidden_dim=config.HIDDEN_DIM).to(config.DEV)
-    model = model_fn(hidden_dim=config.HIDDEN_DIM).to(config.DEV)
-    # param_groups = [
-    #     {"params": [p for n, p in model.named_parameters() if "bias" in n.lower()]},
-    #     {
-    #         "params": [
-    #             p for n, p in model.named_parameters() if "bias" not in n.lower()
-    #         ],
-    #         "weight_decay": config.WD,
-    #     },
-    # ]
+    model = make_mup(model_fn, hidden_dim=config.HIDDEN_DIM).to(config.DEV)
+    # model = model_fn(hidden_dim=config.HIDDEN_DIM).to(config.DEV)
+    param_groups = [
+        {"params": [p for n, p in model.named_parameters() if "bias" in n.lower()]},
+        {
+            "params": [
+                p for n, p in model.named_parameters() if "bias" not in n.lower()
+            ],
+            "weight_decay": config.WD,
+        },
+    ]
     # optimizer = mup.MuSGD(param_groups, lr=config.LR, momentum=.99, nesterov=True)
-    # optimizer = mup.MuAdam(param_groups, lr=config.LR)
+    optimizer = mup.MuAdamW(param_groups, lr=config.LR)
     # split into weights biases
     # optimizer = torch.optim.AdamW(param_groups, lr=config.LR, amsgrad=True)
-    optimizer = torch.optim.AdamW(model.parameters(), lr=config.LR, weight_decay=config.WD)
+    # optimizer = torch.optim.AdamW(model.parameters(), lr=config.LR, weight_decay=config.WD)
     return model, optimizer

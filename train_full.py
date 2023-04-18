@@ -3,7 +3,7 @@ import tqdm
 import argparse
 import torch
 from torch.utils.data import DataLoader, TensorDataset
-from torch.optim.lr_scheduler import CosineAnnealingLR
+from torch.optim.lr_scheduler import CosineAnnealingLR, ReduceLROnPlateau, OneCycleLR
 from torch.nn import CrossEntropyLoss, MSELoss
 from data import prepare_nuclear_data, prepare_modular_data
 from model import get_model_and_optim
@@ -20,7 +20,9 @@ class Trainer:
         self.args = args
         self.basedir = basedir
         # prepare data
-        self.data = (prepare_modular_data if problem == Task.MODULAR else prepare_nuclear_data)(args)
+        self.data = (
+            prepare_modular_data if problem == Task.MODULAR else prepare_nuclear_data
+        )(args)
         self.loader = DataLoader(
             TensorDataset(
                 self.data.X[self.data.train_mask], self.data.y[self.data.train_mask]
@@ -30,9 +32,11 @@ class Trainer:
         )
         # prepare model
         self.model, self.optimizer = get_model_and_optim(self.data, args)
+        if args.CKPT: self.model.load_state_dict(torch.load(args.CKPT))
         self.scheduler = CosineAnnealingLR(
-            self.optimizer, args.EPOCHS * len(self.loader)
+            self.optimizer, args.EPOCHS * len(self.loader), eta_min=1e-5
         )
+        # self.scheduler = OneCycleLR(self.optimizer, max_lr=1e-3, total_steps=args.EPOCHS * len(self.loader))
         # prepare loss
         self.loss_fn = {
             "regression": MSELoss(reduction="sum"),
@@ -53,7 +57,7 @@ class Trainer:
         for _ in bar:
             for x, y in self.loader:
                 self.train_step(x, y)
-            self.val_step()
+            self.val_step(log=True)
 
     def train_step(self, X, y):
         self.model.train()
@@ -67,7 +71,7 @@ class Trainer:
         self.scheduler.step()
         return out, losses, num_samples
 
-    def val_step(self):
+    def val_step(self, log=False):
         # This serves as the logging step as well
         X, y = self.data.X, self.data.y
         task = self.all_tasks
@@ -76,8 +80,6 @@ class Trainer:
             out = self.model(X)
             out_ = self._unscale_output(out.clone())  # reg_targets are rescaled
             y_ = self.unscaled_y
-            # scale binding energy by A
-            out_[:, 0] = out_[:, 0] * (X[:, 0] + X[:, 1])
             metrics_dict = {}
             masks = {"train": self.data.train_mask, "val": self.data.val_mask}
             for name, mask in masks.items():
@@ -86,7 +88,8 @@ class Trainer:
                 m = self.construct_metrics(losses, metrics, num_samples, name)
                 metrics_dict.update(m)
 
-        self.logger.log(metrics_dict)
+        if log: self.logger.log(metrics_dict)
+        return metrics_dict
 
     def construct_metrics(self, losses, metrics, num_samples, prefix):
         """Constructs a dictionary of metrics from the array of metrics and number of samples for each task"""
@@ -95,8 +98,8 @@ class Trainer:
             metric_name = "_".join([prefix, "loss", task_name])
             m_dict[metric_name] = (losses[i] / num_samples[i]).item()
             metric_name = "_".join([prefix, "metric", task_name])
-            m_dict[metric_name] = (metrics[i] / num_samples[i]).item()
-        metric_name = "_".join([prefix, "loss", "combined"])
+            m_dict[metric_name] = metrics[i].item()
+        metric_name = "_".join([prefix, "loss", "all"])
         m_dict[metric_name] = (losses.sum() / num_samples.sum()).item()
         return m_dict
 
@@ -147,20 +150,25 @@ class Trainer:
         # out has shape [N * num_tasks, out_shape] and is ordered by sample
         # [N * num_tasks, num_reg_tasks]
         rescaled = self._inverse_transform(out[:, -len(self.args.TARGETS_REGRESSION) :])
+        # scale binding energy by A TODO remove this
+        rescaled[:, 0] = rescaled[:, 0] * (self.data.X[:, 0] + self.data.X[:, 1])
         out[:, -len(self.args.TARGETS_REGRESSION) :] = rescaled
         return out
 
     def _inverse_transform(self, out):
         # out has shape [-1, num_reg_tasks]
-        out = self.data.regression_transformer.inverse_transform(out)
+        out = self.data.regression_transformer.inverse_transform(out.cpu())
         # first dim is probably N * num_tasks
-        return torch.from_numpy(out)
+        return torch.from_numpy(out).to(self.args.DEV)
 
     @cached_property
     def unscaled_y(self):
-        N = len(self.data.y) // len(self.data.output_map)
-        y_ = self._inverse_transform(self.data.y.view(N, -1)).view(-1, 1)
-        y_[:, 0] = y_[:, 0] * (self.data.X[:, 0] + self.data.X[:, 1])
+        N = len(self.data.y) // self.num_tasks
+        y_ = self._inverse_transform(self.data.y.view(N, -1).clone())
+        # TODO remove this
+        A = self.data.X[::self.num_tasks, :2].sum(1)
+        y_[:, 0] = y_[:, 0] * (A)
+        y_ = y_.view(-1, 1)
         return y_
 
     @cached_property

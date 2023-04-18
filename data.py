@@ -167,7 +167,7 @@ def get_targets(df):
     # place all targets into targets an empty copy of df
     targets = df[["z", "n"]].copy()
     # binding energy per nucleon
-    targets["binding_energy"] = get_binding_energy_from(df)
+    targets["binding"] = get_binding_energy_from(df)
     # radius in fm
     targets["radius"] = get_radius_from(df)
     # half life in log10(sec)
@@ -327,8 +327,8 @@ def prepare_nuclear_data(config: argparse.Namespace, recreate: bool = False):
 
     # don't consider nuclei with high uncertainty in binding energy
     # BUT only for evaluation!
-    # except_binding = (df.binding_unc * (df.z + df.n) > 100).values
-    # targets.loc[test_mask.numpy() & except_binding, "binding_energy"] = np.nan
+    except_binding = (df.binding_unc * (df.z + df.n) > 100).values
+    targets.loc[except_binding, "binding"] = np.nan
 
     y = torch.tensor(targets[list(output_map.keys())].values).float()
 

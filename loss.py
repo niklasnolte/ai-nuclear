@@ -22,7 +22,7 @@ def accuracy(output: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
     mask = ~torch.isnan(targets)
     masked_target = targets[mask]
     masked_output = output[mask]
-    return (masked_output.argmax(dim=-1) == masked_target).float().mean(dim=0)
+    return (masked_output.argmax(dim=-1) == masked_target).float().mean()
 
 def rmse(output: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
     mask = ~torch.isnan(targets)

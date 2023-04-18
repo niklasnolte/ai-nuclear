@@ -81,6 +81,7 @@ class BaselineModel(Base):
         non_embedded_input_dim: int,
         hidden_dim: int,
         output_dim: int,
+        depth: int = 2,
     ):
         """
         :param vocab_size: number of tokens in the vocabulary,
@@ -94,7 +95,7 @@ class BaselineModel(Base):
         self.nonlinear = nn.Sequential(
             nn.Linear(self.input_dim, hidden_dim),
             nn.SiLU(),
-            *[ResidualBlock(hidden_dim) for _ in range(2)],
+            *[ResidualBlock(hidden_dim) for _ in range(depth)],
         )
         self.readout = nn.Linear(hidden_dim, output_dim)
 
@@ -290,6 +291,7 @@ def get_model_and_optim(data: Data, config):
         vocab_size=data.vocab_size,
         non_embedded_input_dim=data.X.shape[1] - len(data.vocab_size),
         output_dim=output_dim,
+        depth=config.DEPTH,
     )
     model = make_mup(model_fn, hidden_dim=config.HIDDEN_DIM).to(config.DEV)
     # model = model_fn(hidden_dim=config.HIDDEN_DIM).to(config.DEV)

@@ -10,7 +10,8 @@ def where_am_i():
     elif host.endswith("harvard.edu") or host.startswith("holygpu"):
         return "HARVARD"
     else:
-        raise ValueError(f"Unknown cluster: {host}")
+        Warning(f"Unknown cluster: {host}")
+        return "Local"
 
 def _serialize_dict(targets: dict) -> str:
     if targets == {}:

@@ -10,7 +10,10 @@ Clusters = dict(
     HARVARD = {
         "partition": "iaifi_gpu",
         "root": os.path.expanduser("~/data/AI-NUCLEAR-LOGS"),
-    }
+    },
+    Local = {
+        "root": "./results" ,
+        }
 )
 
 # snakemake configs (only apply if running with snakemake)

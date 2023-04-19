@@ -186,7 +186,7 @@ class Trainer:
         return self.data.X[:, task_idx]  # [N * num_tasks, 1]
 
     def _get_scheduler(self, args):
-        if not args.SCHED:
+        if args.SCHED == "none":
 
             class NoScheduler:
                 def step(self):

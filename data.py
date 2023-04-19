@@ -155,8 +155,7 @@ def get_isospin_from(string):
 
 def get_binding_energy_from(df):
     binding = df.binding.replace(" ", "nan").astype(float)
-    return binding #- semi_empirical_mass_formula(df.z, df.n)
-
+    return binding  
 
 
 def get_radius_from(df):
@@ -168,6 +167,8 @@ def get_targets(df):
     targets = df[["z", "n"]].copy()
     # binding energy per nucleon
     targets["binding"] = get_binding_energy_from(df)
+    # binding energy per nucleon minus semi empirical mass formula
+    targets["binding_semf"] = targets.binding - semi_empirical_mass_formula(df.z, df.n)
     # radius in fm
     targets["radius"] = get_radius_from(df)
     # half life in log10(sec)
@@ -194,6 +195,14 @@ def get_targets(df):
     targets["sp"] = get_sp_from(df)
     # isospin as float
     targets["isospin"] = get_isospin_from(df)
+    # These are semi-empirical mass formula terms
+    targets["volume"] = targets.z + targets.n  # volume
+    targets["surface"] = targets.volume ** (2 / 3)  # surface
+    targets["symmetry"] = ((targets.z - targets.n) ** 2) / targets.volume  # symmetry
+    targets["delta"] = delta(targets.z, targets.n)  # delta
+    targets["coulomb"] = (targets.z**2 - targets.z) / targets.volume ** (
+        1 / 3
+    )  # coulomb
 
     return targets
 
@@ -319,7 +328,10 @@ def prepare_nuclear_data(config: argparse.Namespace, recreate: bool = False):
         output_map[target] = 1
 
     reg_columns = list(config.TARGETS_REGRESSION)
-    feature_transformer = MinMaxScaler()
+    # feature_transformer = QuantileTransformer(
+    #     output_distribution="uniform", random_state=config.SEED
+    # )
+    feature_transformer = MinMaxScaler((-1, 1))
     if len(reg_columns) > 0:
         targets[reg_columns] = feature_transformer.fit_transform(
             targets[reg_columns].values

@@ -3,11 +3,16 @@ import tqdm
 import argparse
 import torch
 from torch.utils.data import DataLoader, TensorDataset
-from torch.optim.lr_scheduler import CosineAnnealingLR, ReduceLROnPlateau, OneCycleLR
+from torch.optim.lr_scheduler import (
+    CosineAnnealingLR,
+    ReduceLROnPlateau,
+    OneCycleLR,
+    LinearLR,
+)
 from torch.nn import CrossEntropyLoss, MSELoss
 from data import prepare_nuclear_data, prepare_modular_data
 from model import get_model_and_optim
-from loss import LossWithNan, rmse, accuracy
+from loss import rmse, accuracy
 from config import Task
 from log import Logger
 from argparse import Namespace
@@ -32,11 +37,9 @@ class Trainer:
         )
         # prepare model
         self.model, self.optimizer = get_model_and_optim(self.data, args)
-        if args.CKPT: self.model.load_state_dict(torch.load(args.CKPT))
-        self.scheduler = CosineAnnealingLR(
-            self.optimizer, args.EPOCHS * len(self.loader), eta_min=1e-5
-        )
-        # self.scheduler = OneCycleLR(self.optimizer, max_lr=1e-3, total_steps=args.EPOCHS * len(self.loader))
+        if hasattr(args, "CKPT") and args.CKPT:
+            self.model.load_state_dict(torch.load(args.CKPT))
+        self.scheduler = self._get_scheduler(args)
         # prepare loss
         self.loss_fn = {
             "regression": MSELoss(reduction="sum"),
@@ -88,7 +91,8 @@ class Trainer:
                 m = self.construct_metrics(losses, metrics, num_samples, name)
                 metrics_dict.update(m)
 
-        if log: self.logger.log(metrics_dict)
+        if log:
+            self.logger.log(metrics_dict)
         return metrics_dict
 
     def construct_metrics(self, losses, metrics, num_samples, prefix):
@@ -148,26 +152,31 @@ class Trainer:
     def _unscale_output(self, out):
         """unscales each element y using the inverse transform of the regression_transformer of the task"""
         # out has shape [N * num_tasks, out_shape] and is ordered by sample
+        # i.e. all tasks for sample 0, then all tasks for sample 1, etc.
         # [N * num_tasks, num_reg_tasks]
-        rescaled = self._inverse_transform(out[:, -len(self.args.TARGETS_REGRESSION) :])
-        # scale binding energy by A TODO remove this
-        rescaled[:, 0] = rescaled[:, 0] * (self.data.X[:, 0] + self.data.X[:, 1])
+        rescaled = out[:, -len(self.args.TARGETS_REGRESSION) :].clone()
+        rescaled = self._inverse_transform(rescaled, extend=True)
         out[:, -len(self.args.TARGETS_REGRESSION) :] = rescaled
         return out
 
-    def _inverse_transform(self, out):
+    def _inverse_transform(self, out, extend=False):
         # out has shape [-1, num_reg_tasks]
         out = self.data.regression_transformer.inverse_transform(out.cpu())
         # first dim is probably N * num_tasks
-        return torch.from_numpy(out).to(self.args.DEV)
+        # TODO remove this
+        if extend:
+            A = self.data.X[:, :2].sum(1).view(-1, 1)
+        else:
+            A = self.data.X[:: self.num_tasks, :2].sum(1).view(-1, 1)
+        out = torch.from_numpy(out).to(self.args.DEV)
+        out[:, :2] = out[:, :2] * (A)
+        return out
 
     @cached_property
     def unscaled_y(self):
         N = len(self.data.y) // self.num_tasks
+        # flatten tasks into dim=1
         y_ = self._inverse_transform(self.data.y.view(N, -1).clone())
-        # TODO remove this
-        A = self.data.X[::self.num_tasks, :2].sum(1)
-        y_[:, 0] = y_[:, 0] * (A)
         y_ = y_.view(-1, 1)
         return y_
 
@@ -175,6 +184,24 @@ class Trainer:
     def all_tasks(self):
         task_idx = len(self.data.vocab_size) - 1
         return self.data.X[:, task_idx]  # [N * num_tasks, 1]
+
+    def _get_scheduler(self, args):
+        if not args.SCHED:
+
+            class NoScheduler:
+                def step(self):
+                    pass
+
+            return NoScheduler()
+        max_steps = args.EPOCHS * len(self.loader)
+        if args.SCHED == "cosine":
+            return CosineAnnealingLR(self.optimizer, max_steps, 1e-5)
+        elif args.SCHED == "onecycle":
+            return OneCycleLR(self.optimizer, 1e-3, max_steps)
+        elif args.SCHED == "linear":
+            return LinearLR(self.optimizer, 1.0, 1e-2, max_steps)
+        else:
+            raise ValueError(f"Unknown scheduler {args.SCHED}")
 
 
 train = lambda *args: Trainer(*args).train()

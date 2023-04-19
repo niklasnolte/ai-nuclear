@@ -26,7 +26,7 @@ class Logger:
                     wandb.run.summary["best_epoch"] = epoch
                     for i, (target, value) in enumerate(metrics.items()):
                         if "val" in target:
-                            wandb.run.summary[f"best_val_{target}"] = value
+                            wandb.run.summary[f"best_{target}"] = value
                 torch.save(
                     self.best_model, os.path.join(self.basedir, "model_best.pt")
                 )
@@ -43,8 +43,10 @@ class Logger:
                 msg = f"Epoch {epoch:<14} | {'Train':^8} | {'Val':^8}\n"
                 msg += "\n".join(sorted(items, key=lambda x: x.split(" ")[0]))
                 print(msg)
-        if epoch == self.args.EPOCHS - 1:
+        if epoch == self.args.EPOCHS - 1 or epoch == 0:
             torch.save(self.model, os.path.join(self.basedir, "model_FULL.pt"))
+            print("Done training. Saved model to:")
+            print(os.path.join(self.basedir, "model_FULL.pt"))
         elif epoch % self.args.CKPT_FREQ == 0:
             torch.save(
                 self.model.state_dict(), os.path.join(self.basedir, f"model_{epoch}.pt")

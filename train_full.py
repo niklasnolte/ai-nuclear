@@ -20,10 +20,9 @@ from functools import cached_property
 
 
 class Trainer:
-    def __init__(self, problem: Task, args: Namespace, basedir):
+    def __init__(self, problem: Task, args: Namespace):
         self.problem = problem
         self.args = args
-        self.basedir = basedir
         # prepare data
         self.data = (
             prepare_modular_data if problem == Task.MODULAR else prepare_nuclear_data
@@ -50,7 +49,7 @@ class Trainer:
             "classification": accuracy,
         }
         # prepare logger
-        self.logger = Logger(args, self.model, basedir)
+        self.logger = Logger(args, self.model)
 
         # misc
         self.num_tasks = len(self.data.output_map)

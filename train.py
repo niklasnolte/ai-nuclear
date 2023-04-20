@@ -11,8 +11,8 @@ args, name = parse_arguments_and_get_name(TASK)
 torch.manual_seed(args.SEED)
 
 # paths and names
-basedir = os.path.join(args.ROOT, name)
-os.makedirs(basedir, exist_ok=True)
+args.basedir = os.path.join(args.ROOT, name)
+os.makedirs(args.basedir, exist_ok=True)
 print(f"training run for {name}")
 
 # bookkeeping
@@ -44,4 +44,4 @@ if args.WANDB:
 
 
 if TASK == Task.FULL or TASK == Task.DEBUG or TASK == Task.MODULAR:
-    train(TASK, args, basedir)
+    train(TASK, args)

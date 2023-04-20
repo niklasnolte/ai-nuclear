@@ -4,17 +4,22 @@ import wandb
 
 
 class Logger:
-    def __init__(self, args, model, basedir):
+    def __init__(self, args, model ):
         self.args = args
         self.epoch = 0
         self.model = model
-        self.basedir = basedir
-        if args.WANDB:
-            n_params = sum(p.numel() for p in model.parameters())
-            wandb.config.update({"n_params": n_params})
+        # FIXME: this is a hack to avoid logging outside train.py
+        if hasattr(args, "basedir"):
+            self.basedir = args.basedir 
+            if args.WANDB:
+                n_params = sum(p.numel() for p in model.parameters())
+                wandb.config.update({"n_params": n_params})
+        else:
+            self.basedir = None
         self.best_loss = float("inf")
 
     def log(self, metrics=None, epoch=None):
+        if self.basedir is None: return -1
         epoch = epoch if epoch is not None else self.epoch
         if epoch % self.args.LOG_FREQ == 0:
             val_loss = metrics["val_loss_all"]

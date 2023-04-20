@@ -6,6 +6,7 @@ import mup
 import warnings
 from typing import Callable, Iterable
 from data import Data
+import os
 
 
 class Base(nn.Module):
@@ -245,7 +246,7 @@ def _append_readout(model_fn: Callable) -> Callable:
     return model_fn_with_readout
 
 
-def make_mup(model_fn: Callable, **scale_kwargs) -> nn.Module:
+def make_mup(model_fn: Callable, shape_file=None, **scale_kwargs) -> nn.Module:
     """Reinitialize model with mup scaling of relevant dimensions. Takes a function which returns a model and returns a model with mup scaling.
     Assumes the model has a readout linear layer which is either the last layer in a sequential model or an attribute of the model.
 
@@ -269,7 +270,7 @@ def make_mup(model_fn: Callable, **scale_kwargs) -> nn.Module:
     base = model_fn(**base_kwargs)
     delta = model_fn(**delta_kwargs)
     model = model_fn(**scale_kwargs)
-    mup.set_base_shapes(model, base, delta=delta)
+    mup.set_base_shapes(model, base, delta=delta, savefile=shape_file)
     del base, delta
     for name, param in model.named_parameters():
         if "weight" in name.lower() or "emb" in name.lower():  # FIXME or not
@@ -293,7 +294,13 @@ def get_model_and_optim(data: Data, config):
         output_dim=output_dim,
         depth=config.DEPTH,
     )
-    model = make_mup(model_fn, hidden_dim=config.HIDDEN_DIM).to(config.DEV)
+    if hasattr(config, "basedir"):
+        # FIXME: this is a terrible hack to avoid saving shapes outside of the
+        # actual training run
+        shape_file = os.path.join(config.basedir, "shapes.yaml")
+    else:
+        shape_file = None
+    model = make_mup(model_fn, shape_file, hidden_dim=config.HIDDEN_DIM).to(config.DEV)
     # model = model_fn(hidden_dim=config.HIDDEN_DIM).to(config.DEV)
     param_groups = [
         {"params": [p for n, p in model.named_parameters() if "bias" in n.lower()]},

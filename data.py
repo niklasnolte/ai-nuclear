@@ -331,7 +331,7 @@ def prepare_nuclear_data(config: argparse.Namespace, recreate: bool = False):
     # feature_transformer = QuantileTransformer(
     #     output_distribution="uniform", random_state=config.SEED
     # )
-    feature_transformer = MinMaxScaler((-1, 1))
+    feature_transformer = MinMaxScaler()
     if len(reg_columns) > 0:
         targets[reg_columns] = feature_transformer.fit_transform(
             targets[reg_columns].values

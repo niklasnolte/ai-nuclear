@@ -24,8 +24,8 @@ if args.WANDB:
         entity="iaifi",
         name=name,
         notes="debugging tech debt payments",
-        tags=["testing"],
-        group="task-emb",
+        tags=["task-emb", "semf", "cosine", "minmax"],
+        group="task-emb-semf",
         config=vars(args),
     )
     wandb.save("train.py")

@@ -51,7 +51,7 @@ class Logger:
         if epoch == self.args.EPOCHS - 1 or epoch == 0:
             torch.save(self.model, os.path.join(self.basedir, "model_FULL.pt"))
             print("Done training. Saved model to:")
-            print(os.path.join(self.basedir, "model_FULL.pt"))
+            print(os.path.join(self.basedir))
         elif epoch % self.args.CKPT_FREQ == 0:
             torch.save(
                 self.model.state_dict(), os.path.join(self.basedir, f"model_{epoch}.pt")

@@ -7,6 +7,7 @@ import warnings
 from typing import Callable, Iterable
 from data import Data
 import os
+from monotonenorm import direct_norm, GroupSort
 
 
 class Base(nn.Module):
@@ -53,15 +54,17 @@ class Base(nn.Module):
 
 class ResidualBlock(nn.Module):
     def __init__(
-        self, d_model: int, dropout: float = 0.0, activation: nn.Module = nn.ReLU
+        self, d_model: int, dropout: float = 0.0, activation: nn.Module = nn.ReLU(), 
+        norm: Callable = None,
     ):
+        norm = norm or (lambda x: x)
         super().__init__()
         self.dropout = nn.Dropout(p=dropout)
         self.ff = nn.Sequential(
-            nn.Linear(d_model, d_model),
-            activation(),
-            nn.Linear(d_model, d_model),
-            activation(),
+            norm(nn.Linear(d_model, d_model)),
+            activation,
+            norm(nn.Linear(d_model, d_model)),
+            activation,
         )
         # self.norm = nn.LayerNorm(d_model, elementwise_affine=False)
         # self.norm = nn.BatchNorm1d(d_model, affine=False)
@@ -83,6 +86,7 @@ class BaselineModel(Base):
         hidden_dim: int,
         output_dim: int,
         depth: int = 2,
+        lipschitz: bool = False,
     ):
         """
         :param vocab_size: number of tokens in the vocabulary,
@@ -92,13 +96,14 @@ class BaselineModel(Base):
         """
 
         super().__init__(vocab_size, non_embedded_input_dim, hidden_dim)
-
+        norm = direct_norm if lipschitz else (lambda x: x)
+        act = GroupSort(hidden_dim//2) if lipschitz else nn.ReLU()
         self.nonlinear = nn.Sequential(
             nn.Linear(self.input_dim, hidden_dim),
             nn.SiLU(),
-            *[ResidualBlock(hidden_dim) for _ in range(depth)],
+            *[ResidualBlock(hidden_dim, norm=norm, activation=act) for _ in range(depth)],
         )
-        self.readout = nn.Linear(hidden_dim, output_dim)
+        self.readout = norm(nn.Linear(hidden_dim, output_dim))
 
     def forward_with_embeddings(self, x, embs):  # embs: [ batch_size, 2 * hidden_dim ]
         x = self.embed_input(x, embs)
@@ -106,109 +111,9 @@ class BaselineModel(Base):
         return self.readout(x)  # [ batch_size, output_dim ]
 
 
-class SplitupModel(Base):
-    def __init__(
-        self,
-        vocab_size: Iterable,
-        non_embedded_input_dim: int,
-        hidden_dim: int,
-        output_dim: Iterable[int],
-    ):
-        """
-        :param vocab_size: number of tokens in the vocabulary,
-          or an Iterable of vocab sizes for each input. One embedding layer will be created for each input.
-        :param hidden_dim: dimension of the hidden layer
-        :param output_dim: multiple dimensions of the output layers (later concatenated)
-        """
-
-        super().__init__(vocab_size, non_embedded_input_dim, hidden_dim)
-
-        self.n_tasks = len(output_dim)
-
-        d_model = hidden_dim // self.n_tasks
-        self.nonlinears = nn.ModuleList(
-            [
-                nn.Sequential(
-                    nn.Linear(self.input_dim, d_model),
-                    nn.SiLU(),
-                    nn.LayerNorm(d_model, elementwise_affine=False),
-                    nn.Linear(d_model, d_model),
-                    nn.SiLU(),
-                    mup.MuReadout(d_model, od),
-                )
-                for od in output_dim
-            ]
-        )
-
-    def forward_with_embeddings(self, x, embs):  # embs: [ batch_size, 2 * hidden_dim ]
-        x = self.embed_input(x, embs)
-        return torch.cat(
-            [nl(x) for nl in self.nonlinears], dim=1
-        )  # [ batch_size, sum(output_dim) ]
-
-
-class GatingNetwork(nn.Module):
-    def __init__(self, input_size, num_experts):
-        super(GatingNetwork, self).__init__()
-        self.fc = mup.MuReadout(input_size, num_experts)
-
-    def forward(self, x):
-        return F.softmax(self.fc(x), dim=-1)
-
-
-class MoEModel(Base):
-    def __init__(
-        self,
-        vocab_size: Iterable,
-        non_embedded_input_dim: int,
-        hidden_dim: int,
-        output_dim: int,
-    ):
-        """
-        :param vocab_size: number of tokens in the vocabulary,
-          or an Iterable of vocab sizes for each input. One embedding layer will be created for each input.
-        :param hidden_dim: dimension of the hidden layer
-        :param output_dim: dimension of the output layer
-        """
-
-        super().__init__(vocab_size, non_embedded_input_dim, hidden_dim)
-
-        self.num_experts = 4
-
-        def expert(input_size, hidden_size, output_size):
-            return nn.Sequential(
-                nn.Linear(input_size, hidden_size),
-                nn.SiLU(),
-                mup.MuReadout(hidden_size, output_size),
-            )
-
-        self.experts = nn.ModuleList(
-            [
-                expert(self.input_dim, hidden_dim, output_dim)
-                for _ in range(self.num_experts)
-            ]
-        )
-        self.gating_network = GatingNetwork(self.input_dim, self.num_experts)
-        print(sum(p.numel() for p in self.parameters() if p.requires_grad))
-
-    def forward_with_embeddings(self, x, embs):
-        x = self.embed_input(x, embs)
-
-        weights = self.gating_network(x)
-        expert_outputs = torch.stack([expert(x) for expert in self.experts], dim=-1)
-        output = torch.einsum("ij,ikj->ik", weights, expert_outputs)
-        return output
-
-
 def get_model_fn(config):
     if config.MODEL == "baseline":
         return BaselineModel
-    elif config.MODEL == "splitup":
-        return SplitupModel
-    # elif config.MODEL == "transformer":
-    #     return DefaultTransformer
-    elif config.MODEL == "moe":  # Add a new condition for the MoE model
-        return MoEModel
     else:
         raise ValueError(
             f"Unknown model: {config.MODEL}, choose between 'baseline', 'splitup', 'transformer' and 'moe'"
@@ -270,7 +175,7 @@ def make_mup(model_fn: Callable, shape_file=None, **scale_kwargs) -> nn.Module:
     base = model_fn(**base_kwargs)
     delta = model_fn(**delta_kwargs)
     model = model_fn(**scale_kwargs)
-    mup.set_base_shapes(model, base, delta=delta, savefile=shape_file)
+    mup.set_base_shapes(model, base, delta=delta, savefile=shape_file, do_assert=False)
     del base, delta
     for name, param in model.named_parameters():
         if "weight" in name.lower() or "emb" in name.lower():  # FIXME or not
@@ -293,6 +198,7 @@ def get_model_and_optim(data: Data, config):
         non_embedded_input_dim=data.X.shape[1] - len(data.vocab_size),
         output_dim=output_dim,
         depth=config.DEPTH,
+        lipschitz=config.LIPSCHITZ=="true",
     )
     if hasattr(config, "basedir"):
         # FIXME: this is a terrible hack to avoid saving shapes outside of the

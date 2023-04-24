@@ -10,13 +10,13 @@ class Task(Enum):
         # FULL_dimnreg2_pcaalpha-1.5_wd0.003_lr0.1_epochs30000_trainfrac0.8_hiddendim256_seed1_modelbaseline_targetsclassificationNone_targetsregressionz:1-n:1-binding_energy:1-radius:1
         dict(
             MODEL=["baseline"],
-            WD=[1e-2, 1e-3, 1e-6],
-            LR=[1e-1, 1e-2, 1e-3, 1e-4],
-            EPOCHS=[10000],
+            WD=[1e-2],
+            LR=[1e-2],
+            EPOCHS=[50000],
             TRAIN_FRAC=[0.9],
-            HIDDEN_DIM=[32],
-            DEPTH=[2, 3, 4],
-            SEED=[0],
+            HIDDEN_DIM=[1024],
+            DEPTH=[4],
+            SEED=[0, 1, 2, 3, 4],
             BATCH_SIZE=[4069],
             TARGETS_CLASSIFICATION=[
                 {},

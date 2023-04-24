@@ -24,7 +24,7 @@ if args.WANDB:
         entity="iaifi",
         name=name,
         notes="debugging tech debt payments",
-        tags=["task-emb", "semf", "cosine", "minmax", "test-scaling"],
+        tags=["task-emb", "semf", "cosine", "minmax", "test-scaling", "seed-check"],
         group="task-emb-semf",
         config=vars(args),
     )

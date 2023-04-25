@@ -1,16 +1,19 @@
 import torch
 import os
 import wandb
-
+import yaml
 
 class Logger:
     def __init__(self, args, model ):
         self.args = args
+        # save args
         self.epoch = 0
         self.model = model
         # FIXME: this is a hack to avoid logging outside train.py
         if hasattr(args, "basedir"):
             self.basedir = args.basedir 
+            with open(os.path.join(args.basedir, "args.yaml"), "w") as f:
+                yaml.dump(vars(args), f)
             if args.WANDB:
                 n_params = sum(p.numel() for p in model.parameters())
                 wandb.config.update({"n_params": n_params})
@@ -49,8 +52,9 @@ class Logger:
                 msg += "\n".join(sorted(items, key=lambda x: x.split(" ")[0]))
                 print(msg)
         if epoch == self.args.EPOCHS - 1 or epoch == 0:
-            torch.save(self.model, os.path.join(self.basedir, "model_FULL.pt"))
-            print("Done training. Saved model to:")
+            state_dict_path = os.path.join(self.basedir, f"model_{epoch}.pt")
+            torch.save(self.model.state_dict(), state_dict_path)
+            print("Saved model to:")
             print(os.path.join(self.basedir))
         elif epoch % self.args.CKPT_FREQ == 0:
             torch.save(

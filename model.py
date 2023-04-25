@@ -97,7 +97,7 @@ class BaselineModel(Base):
 
         super().__init__(vocab_size, non_embedded_input_dim, hidden_dim)
         norm = direct_norm if lipschitz else (lambda x: x)
-        act = GroupSort(hidden_dim//2) if lipschitz else nn.ReLU()
+        act = nn.ReLU()
         self.nonlinear = nn.Sequential(
             nn.Linear(self.input_dim, hidden_dim),
             nn.SiLU(),
@@ -218,7 +218,10 @@ def get_model_and_optim(data: Data, config):
         },
     ]
     # optimizer = mup.MuSGD(param_groups, lr=config.LR, momentum=.99, nesterov=True)
-    optimizer = mup.MuAdamW(param_groups, lr=config.LR)
+    if hasattr(config, "OPTIM") and config.OPTIM == "sgd":
+        optimizer = mup.MuSGD(param_groups, lr=config.LR)
+    else:
+        optimizer = mup.MuAdamW(param_groups, lr=config.LR)
     # split into weights biases
     # optimizer = torch.optim.AdamW(param_groups, lr=config.LR, amsgrad=True)
     # optimizer = torch.optim.AdamW(model.parameters(), lr=config.LR, weight_decay=config.WD)

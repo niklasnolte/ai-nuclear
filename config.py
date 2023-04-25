@@ -7,17 +7,16 @@ class Task(Enum):
     # make sure that the tasks don't have exactly the same config
     # otherwise enum is a poopy head
     FULL = serialize_elements_in_task(
-        # FULL_dimnreg2_pcaalpha-1.5_wd0.003_lr0.1_epochs30000_trainfrac0.8_hiddendim256_seed1_modelbaseline_targetsclassificationNone_targetsregressionz:1-n:1-binding_energy:1-radius:1
         dict(
             MODEL=["baseline"],
             WD=[1e-2],
             LR=[1e-2],
             EPOCHS=[50000],
             TRAIN_FRAC=[0.9],
-            HIDDEN_DIM=[1024],
-            DEPTH=[4],
-            SEED=[0, 1, 2, 3, 4],
-            BATCH_SIZE=[4069],
+            HIDDEN_DIM=[256],
+            DEPTH=[2],
+            SEED=[0],
+            BATCH_SIZE=[1024],
             TARGETS_CLASSIFICATION=[
                 {},
                 # {"stability": 1, "parity": 1, "spin": 1, "isospin": 1},
@@ -48,7 +47,8 @@ class Task(Enum):
             LIPSCHITZ = ["false"],
             # CKPT = ["/home/submit/kitouni/ai-nuclear/results/FULL/model_baseline/wd_0.1/lr_0.01/epochs_10000/trainfrac_0.8/hiddendim_64/seed_0/batchsize_256/targetsclassification_None/targetsregression_binding:1-z:1-n:1-radius:1-qa:1-qbm:1-qbm_n:1-qec:1-sn:1-sp:1/model_FULL_best.pt"
             # ],
-            # CKPT = [None],
+            # CKPT = ["/work/submit/kitouni/ai-nuclear/FULL/model_baseline/wd_0.1/lr_0.0001/epochs_2000/trainfrac_0.9/hiddendim_2048/depth_2/seed_0/batchsize_1024/targetsclassification_None/targetsregression_binding_semf:1-z:1-n:1-radius:1-qa:1-qbm:1-qbm_n:1-qec:1-sn:1-sp:1/sched_cosine/lipschitz_false/model_best.pt"],
+            # OPTIM = ["adam"],
         )
     )
 

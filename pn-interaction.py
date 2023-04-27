@@ -1,156 +1,176 @@
 import torch
+from functools import cached_property
 from config import Task
 from config_utils import parse_arguments_and_get_name
+from data import semi_empirical_mass_formula, semi_empirical_radius_formula
 from data import prepare_nuclear_data
-from loss import loss_by_task, metric_by_task, weight_by_task
-import math
-import tqdm
 
 # load TASK from env
 TASK = Task.PN
 
 args, name = parse_arguments_and_get_name(TASK)
-args.LOG_FREQ = 1
+args.LOG_FREQ = 1000
 torch.manual_seed(args.SEED)
-
-data = prepare_nuclear_data(args)
 
 
 def _interpret_nuclei_as_sequence(data):
-    data = data._replace(
-        X=data.X[:, :2].long(), vocab_size=3
-    )  # invalid, proton, neutron
+    data = data._replace(X=data.X[:200, :2].long())  # invalid, proton, neutron
     return data
 
 
-data = _interpret_nuclei_as_sequence(data)
+data = _interpret_nuclei_as_sequence(prepare_nuclear_data(args))
 
 
-class PNAttentionNetwork(torch.nn.Module):
-    def __init__(
-        self,
-        vocab_size,
-        hidden_dim,
-        output_dim,
-        max_pos_enc=294,
-        nheads=1,
-    ):
+def nanstd(tensor, dim, keepdim=False):
+    mask = ~tensor.isnan()
+
+    mean = (
+        torch.nansum(tensor, dim=dim, keepdim=True)
+        / mask.sum(dim=dim, keepdim=True).float()
+    )
+
+    centered_values = torch.where(mask, tensor - mean, torch.zeros_like(tensor))
+    squared_diff = torch.where(mask, centered_values**2, torch.zeros_like(tensor))
+    sum_squared_diff = torch.sum(squared_diff, dim=dim, keepdim=True)
+
+    # Divide the sum by the number of non-NaN values and take the square root
+    std = torch.sqrt(sum_squared_diff / (mask.sum(dim=dim, keepdim=True).float() - 1))
+
+    if not keepdim:
+        std = std.squeeze(dim)
+
+    return std
+
+
+class Simulator(torch.nn.Module):
+    def __init__(self, parton_nums: torch.Tensor):
         super().__init__()
-        self.vocab_size = vocab_size
-        self.nheads = nheads
-        self.hidden_dim = hidden_dim
+        self.device = parton_nums.device
+        self.n_protons, self.n_neutrons = parton_nums[:, [0]], parton_nums[:, [1]]
 
-        self.embedding = torch.nn.Embedding(vocab_size, self.hidden_dim)
-        self.attn = torch.nn.MultiheadAttention(
-            self.hidden_dim, self.nheads, batch_first=True
-        )
-        self.readout = torch.nn.Linear(self.hidden_dim, output_dim)
+        # learnable parameters
+        self.register_parameter("energy_coeff", torch.nn.Parameter(torch.tensor(1.0)))
+        self.register_parameter("energy_shift", torch.nn.Parameter(torch.tensor(1000.0)))
+        self.register_parameter("energy_coeff_2", torch.nn.Parameter(torch.tensor(1.0)))
+        self.register_parameter("energy_shift_2", torch.nn.Parameter(torch.tensor(1000.0)))
+        self.register_parameter("radius_coeff", torch.nn.Parameter(torch.tensor(1.0)))
+        self.register_parameter("radius_offset", torch.nn.Parameter(torch.tensor(1.0)))
 
-        # for positional encoding
-        position = torch.arange(max_pos_enc).unsqueeze(1)
-        div_term = torch.exp(
-            torch.arange(0, hidden_dim, 2) * (-math.log(10000.0) / hidden_dim)
-        )
-        pe = torch.zeros(1, max_pos_enc, hidden_dim)
-        pe[0, :, 0::2] = torch.sin(position * div_term)
-        pe[0, :, 1::2] = torch.cos(position * div_term)
-        self.register_buffer("single_pe", pe)
-        self.register_buffer("arange", torch.arange(max_pos_enc))
+        self.approx_max_seq_len = 300
 
-    def _positional_encoding(self, X, n_protons, n_neutrons):
-        """
-        Arguments:
-            x: Tensor, shape ``[batch_size, seq_len, embedding_dim]``
-        """
-        # TODO I think we should precalculate those
-        seq_len = X.shape[1]
-        pe = self.single_pe[:,:seq_len].repeat(X.shape[0], 1, 1)
-        arange = self.arange[:seq_len]
-        neutron_mask_for_total = (arange >= n_protons) & (arange < (n_protons + n_neutrons))
-        neutron_mask_for_single = arange < n_neutrons
-        pe[neutron_mask_for_total] = pe[neutron_mask_for_single]
-        breakpoint()
-        return X + pe
-
-    @staticmethod
-    def _create_seq(X):
+    @cached_property
+    def parton_types(self):
         # X has entries [x,y] for each element
         # from that make [0,0,0 (x times), 1,1,1 (y times), padding to max]
-        n_protons, n_neutrons = X[:, [0]], X[:, [1]]
-        seq_len = X.sum(dim=1).max().item()
-        seq = torch.zeros(X.shape[0], seq_len, dtype=torch.long, device=X.device)
-        arange = torch.arange(seq_len, device=X.device)
-        seq[arange < n_protons] = 1
-        seq[(arange >= n_protons) & (arange < (n_protons + n_neutrons))] = 2
-        return seq, n_protons, n_neutrons
+        seq_len = (self.n_protons + self.n_neutrons).max().item()
+        seq = torch.zeros(
+            self.n_protons.shape[0], seq_len, dtype=torch.long, device=self.device
+        )
+        arange = torch.arange(seq_len, device=self.device)
+        seq[arange < self.n_protons] = -1
+        seq[
+            (arange >= self.n_protons) & (arange < (self.n_protons + self.n_neutrons))
+        ] = 1
+        return seq
 
-    def forward(self, X):
-        X, n_protons, n_neutrons = self._create_seq(X)
-        X = self.embedding(X)
-        X = self._positional_encoding(X, n_protons, n_neutrons)
-        X, _ = self.attn(X, X, X, need_weights=False)
-        X = X.sum(dim=1)
-        return self.readout(X)
+    @cached_property
+    def parton_positions(self):
+        # initial parton locations
+        # start from (0,0,0), smallest l2's first
+        # so far one neutron and one proton can occupy the same position
+        # but we also have spin, so later its 4 per position
+        # TODO do that 4 position thing
+
+        n_dims = 3
+        side_len = (self.approx_max_seq_len ** (1 / n_dims)) // 2
+        all_positions = torch.cartesian_prod(
+            *[torch.arange(-side_len, side_len + 1)] * n_dims
+        )
+        all_positions = all_positions[torch.argsort(torch.norm(all_positions, dim=1))]
+
+        positions = torch.empty(*self.parton_types.shape, n_dims, device=self.device)
+        parton_idxs = torch.arange(self.parton_types.shape[1], device=self.device)
+        alternating_mask = (parton_idxs % 2 == 0)
+        for i, ps in enumerate(self.parton_types):
+            poss = (
+                torch.empty(self.parton_types.shape[1], n_dims, device=self.device)
+                * torch.nan
+            )
+
+            proton_mask = ps == -1
+            proton_spin_up = alternating_mask & proton_mask
+            proton_spin_down = ~alternating_mask & proton_mask
+            neutron_mask = ps == 1
+            neutron_spin_up = alternating_mask & neutron_mask
+            neutron_spin_down = ~alternating_mask & neutron_mask
+
+            poss[proton_spin_up] = all_positions[:proton_spin_up.sum()]
+            poss[proton_spin_down] = all_positions[:proton_spin_down.sum()]
+            poss[neutron_spin_up] = all_positions[:neutron_spin_up.sum()]
+            poss[neutron_spin_down] = all_positions[:neutron_spin_down.sum()]
+            positions[i] = poss
+
+        return positions
+
+    @cached_property
+    def distance_matrix(self) -> torch.Tensor:
+        # positions is [batch, seq_len, 2]
+        # make a matrix of distances between each element
+        # [batch, seq_len, seq_len]
+        p = self.parton_positions
+        dists : torch.Tensor = torch.norm(p[:, None] - p[:, :, None], dim=-1)
+        return dists
+
+    def _get_pairwise_energy(self, dist: torch.Tensor) -> torch.Tensor:
+        # need to do something else for the invalid type
+        return self.energy_coeff / (dist + self.energy_shift) + self.energy_coeff_2 / (dist**2 + self.energy_shift_2)
+
+    @cached_property
+    def parton_positions_std(self) -> torch.Tensor:
+        return nanstd(self.parton_positions, (1, 2)).view(-1, 1)
+
+    def radius(self) -> torch.Tensor:
+        return self.radius_coeff * self.parton_positions_std + self.radius_offset
+
+    def energy(self) -> torch.Tensor:
+        # binding energy is the sum of all the pairwise potentials
+        # no force at infinite distance
+        dists = self.distance_matrix.flatten(1).nan_to_num(nan=torch.inf)
+        energy = self._get_pairwise_energy(dists)
+        energy = energy.sum(dim=1, keepdim=True) / 2  # distance matrix is symmetric
+        # make dense tensor
+        return energy
 
 
-model = PNAttentionNetwork(
-    data.vocab_size, args.HIDDEN_DIM, sum(data.output_map.values())
-).to(args.DEV)
-optimizer = torch.optim.Adam(model.parameters(), lr=args.LR)
 
-y_train = data.y[data.train_mask]
-y_val = data.y[data.val_mask]
+radius = semi_empirical_radius_formula(data.X[:, 0], data.X[:, 1]).view(-1, 1)
+energy = semi_empirical_mass_formula(data.X[:, 0], data.X[:, 1]).view(-1, 1) * (data.X.sum(1, keepdim=True)) / 1000 # MeV
 
-weights = weight_by_task(data.output_map, args)
+sim = Simulator(data.X)
+optimizer = torch.optim.SGD(sim.parameters(), lr=1e-3, momentum=.99)
+breakpoint()
 
-bar = tqdm.trange(
-    args.EPOCHS,
-)
-for epoch in range(args.EPOCHS):
-    model.train()
-    optimizer.zero_grad()
-    out = torch.zeros(data.y.shape).to(args.DEV)
-    out_col = 0
-    # make a task specific X (task feature)
-    out = model(data.X)
+# train loop
+loss_fn = torch.nn.MSELoss()
+for i in range(100000):
+    # get energy, radius
+    e_pred = sim.energy()
+    r_pred = sim.radius()
+    # calculate loss
+    loss_e = loss_fn(e_pred, energy)
+    loss_r = loss_fn(r_pred, radius)
 
-    train_losses = loss_by_task(out[data.train_mask], y_train, data.output_map, args)
-    train_loss = (weights * train_losses).mean()
+    # backprop
+    (loss_e + loss_r).backward()
 
-    train_losses = train_losses.mean(dim=1)
-    train_loss.mean().backward()
+    # print
+    if i % args.LOG_FREQ == 0:
+        print(f"{i}: {(loss_e**.5).item()}")
+        print(f"{i}: {(loss_r**.5).item()}")
+        for name, param in sim.named_parameters():
+          if param.grad is not None:
+            print(f"{name}: {param.item():.3f} | Grad: {param.grad.norm().item():.3f}")
+
     optimizer.step()
+    optimizer.zero_grad()
 
-    if epoch % args.LOG_FREQ == 0:
-        with torch.no_grad():
-            model.eval()
-            train_metrics = metric_by_task(
-                out[data.train_mask],
-                data.X[data.train_mask],
-                y_train,
-                data.output_map,
-                args,
-                qt=data.regression_transformer,
-            )
-            val_metrics = metric_by_task(
-                out[data.val_mask],
-                data.X[data.val_mask],
-                y_val,
-                data.output_map,
-                args,
-                qt=data.regression_transformer,
-            )
-            val_losses = loss_by_task(
-                out[data.val_mask], y_val, data.output_map, args
-            ).mean(dim=1)
-            val_loss = (weights * val_losses).mean()
-
-            msg = f"\nEpoch {epoch:<6} Train Losses | Metrics\n"
-            for i, target in enumerate(data.output_map.keys()):
-                msg += f"{target:>15}: {train_losses[i].item():.4e} | {train_metrics[i].item():.6f}\n"
-            msg += f"\nEpoch {epoch:<8} Val Losses | Metrics\n"
-            for i, target in enumerate(data.output_map.keys()):
-                msg += f"{target:>15}: {val_losses[i].item():.4e} | {val_metrics[i].item():.6f}\n"
-
-            print(msg)
-            bar.update(args.LOG_FREQ)

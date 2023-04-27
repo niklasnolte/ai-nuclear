@@ -13,7 +13,7 @@ import argparse
 from collections import namedtuple, OrderedDict
 
 
-def delta(Z, N):
+def delta(Z, N) -> torch.Tensor:
     A = Z + N
     aP = 11.18
     delta = aP * A ** (-1 / 2)
@@ -23,7 +23,7 @@ def delta(Z, N):
     return delta
 
 
-def semi_empirical_mass_formula(Z, N):
+def semi_empirical_mass_formula(Z, N) -> torch.Tensor:
     A = N + Z
     aV = 15.75
     aS = 17.8
@@ -38,6 +38,18 @@ def semi_empirical_mass_formula(Z, N):
     )
     Eb[Eb < 0] = 0
     return Eb / A * 1000  # keV
+
+
+def semi_empirical_radius_formula(Z, N) -> torch.Tensor:
+    a = 1.121
+    b = 2.436
+    c = -6.614
+    A = Z + N
+    return (
+        a * A ** (1 / 3) +
+        b * A ** (-1 / 3) +
+        c * A ** (-1.)
+    )
 
 
 def apply_to_df_col(column):

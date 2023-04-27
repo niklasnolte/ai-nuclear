@@ -116,37 +116,18 @@ class Task(Enum):
 
     PN = serialize_elements_in_task(
         dict(
-            MODEL=["baseline"],
             WD=[1e-3],  # first one seems to be best
             LR=[1e-2],
             EPOCHS=[100000],
             TRAIN_FRAC=[0.8],
-            HIDDEN_DIM=[4],
             SEED=[0],
             TARGETS_CLASSIFICATION=[
                 {},
-                {"stability": 1, "parity": 1, "spin": 1, "isospin": 1},
             ],
             TARGETS_REGRESSION=[
                 {
-                    "z": 1,
-                    "n": 1,
                     "binding_energy": 1,
                     "radius": 1,
-                },
-                {
-                    "z": 1,
-                    "n": 1,
-                    "binding_energy": 1,
-                    "radius": 1,
-                    "half_life_sec": 1,
-                    "abundance": 1,
-                    "qa": 1,
-                    "qbm": 1,
-                    "qbm_n": 1,
-                    "qec": 1,
-                    "sn": 1,
-                    "sp": 1,
                 },
             ],
         )

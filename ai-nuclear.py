@@ -60,21 +60,22 @@ def AI_nuclear(task, model, obs, obsi, heavy_mask, TMS):
         # bfp : lr=0.0028 , wd=0.00067
     
     elif task == 'print_rms':
-        rms_tab = rms(model, obs, heavy_mask, 'TMS', 'off', 'test')
+        rms_tab = rms(model, obs, heavy_mask, TMS, 'off', 'test')
         i = 0
         for obsi in obs:
             if obsi == 'binding':
-                print('rms '+obsi+': '+str(rms_tab[i][0]))  
-                print('rms '+obsi+'/nucleon: '+str(rms_tab[i][1]))  
+                print('rms NN '+obsi+': '+str(rms_tab[i][0]))  
+                print('rms NN '+obsi+'/nucleon: '+str(rms_tab[i][1]))  
             else:
                 print('rms '+obsi+': ',rms_tab[i])
             i += 1
         
-        print('rms BW '+'binding'+': '+str(rms('BW', ['binding'], heavy_mask, 'TMS', 'off', 'test')[0][0]))
-        print('rms BW '+'binding'+'/nucleon: '+str(rms('BW', ['binding'], heavy_mask, 'TMS', 'off', 'test')[0][1]))
-        print('rms BW2 '+'binding'+': '+str(rms('BW2', ['binding'], heavy_mask, 'TMS', 'off', 'test')[0][0]))
-        print('rms BW2 '+'binding'+'/nucleon: '+str(rms('BW2', ['binding'], heavy_mask, 'TMS', 'off', 'test')[0][1]))
-
+        # print('rms BW '+'binding'+': '+str(rms('BW', ['binding'], heavy_mask, 'TMS', 'off', 'test')[0][0]))
+        # print('rms BW '+'binding'+'/nucleon: '+str(rms('BW', ['binding'], heavy_mask, 'TMS', 'off', 'test')[0][1]))
+        # print('rms BW2 '+'binding'+': '+str(rms('BW2', ['binding'], heavy_mask, 'TMS', 'off', 'test')[0][0]))
+        # print('rms BW2 '+'binding'+'/nucleon: '+str(rms('BW2', ['binding'], heavy_mask, 'TMS', 'off', 'test')[0][1]))
+        print('rms WS4 '+'binding'+': '+str(rms('WS4', ['binding'], heavy_mask, 'TMS', 'off', 'test')[0][0]))
+        print('rms WS4 '+'binding'+'/nucleon: '+str(rms('WS4', ['binding'], heavy_mask, 'TMS', 'off', 'test')[0][1]))
 
         # print(rms(model, obs, heavy_mask, 'TMS', 'TMS', 'test'))
         # print(rms('BW', ['binding'], heavy_mask, 'TMS', 'TMS', 'test'))
@@ -110,7 +111,7 @@ obsi = 'binding'
 pos_obsi = obs.index(obsi)
 model = torch.load(basepath+"model.pt")
 
-AI_nuclear('plot_heat', model, obs, obsi, heavy_mask, TMS)
+AI_nuclear('print_rms', model, obs, obsi, heavy_mask, TMS)
 
 
 

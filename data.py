@@ -1,11 +1,12 @@
+import os
 import numpy as np
 import pandas as pd
 import urllib.request
 import torch
 from sklearn.model_selection import train_test_split
-from matplotlib import pyplot as plt
 import math
-import warnings
+from formulae import binding_formula, radius_formula
+
 
 def yorig(y, y0_mean, y0_std): # yields back the original dat before normalization
     return y*y0_std+y0_mean
@@ -39,91 +40,7 @@ def get_y_for_ZN(X, y, obsi, Z, N):
     # otherwise, return the corresponding value of y
     return y[index.item()].item()
 
-def radius_formula(data):
-    N = data[["n"]].values
-    Z = data[["z"]].values
-    A = Z+N
-    r0 = 1.2
-    fake_rad = r0*A**(1/3)  # fm
-    return fake_rad*(Z < 110)
 
-
-def delta(Z, N):
-    A = Z+N
-    aP = 9.87
-    delta0 = aP/A**(1/2)
-    for i in range(len(A)):
-        if ((N % 2 == 0) & (Z % 2 == 0))[i]:
-            pass
-        elif ((N % 2 == 1) & (Z % 2 == 1))[i]:
-            delta0[i] = -delta0[i]
-        else:
-            delta0[i] = 0
-    return delta0
-
-
-def shell(Z, N):
-    #calculates the shell effects according to 
-    warnings.filterwarnings("ignore", category=RuntimeWarning) 
-    alpham = -1.9
-    betam = 0.14
-    magic = [2, 8, 20, 28, 50, 82, 126, 184]
-
-    def find_nearest(lst, target):
-        return min(lst, key=lambda x: abs(x - target))
-    nup = np.array([abs(x - find_nearest(magic, x)) for x in Z])
-    nun = np.array([abs(x - find_nearest(magic, x)) for x in N])
-    P = nup*nun/(nup+nun)
-    P[np.isnan(P)] = 0
-    return alpham*P + betam*P**2
-
-
-def binding_formula(df, BW, TMS):
-    #calculates E_b/nucleon for the Bethe–von Weizsäcker semi-empirical mass formula (BW = 'BW') and its extension (BW = 'BW2')
-    N = df["n"].values
-    Z = df["z"].values
-    A = N+Z
-    if BW == 'BW2': #the best-fit points for the coefficients is different between the two models
-        aV = 16.58
-        aS = -26.95
-        aC = -0.774
-        aA = -31.51
-    else:
-        aV = 15.36
-        aS = -16.42
-        aC = -0.691
-        aA = -22.53
-    axC = 2.22
-    aW = -43.4
-    ast = 55.62
-    aR = 14.77
-    Eb = aV*A + aS*A**(2/3) + aC*Z**2/(A**(1/3)) + \
-        aA*(N-Z)**2/A + delta(Z, N)
-    Eb2 = shell(Z, N) + aR*A**(1/3) + axC*Z**(4/3)/A**(1/3) + \
-        aW*abs(N-Z)/A + ast*(N-Z)**2/A**(4/3)
-    if BW == 'BW2':
-        Eb = Eb + Eb2
-    Eb[Eb < 0] = 0
-    
-    if TMS != 'TMS':
-        for i in range(len(A)):
-            if (df['binding_sys'].values[i] == 'Y') or (df['binding_unc'].values[i]*A[i] > 100):
-                Eb[i] = 0
-    return Eb/A #MeV
-
-def PySR_formula(df, TMS):
-    N = df["n"].values
-    Z = df["z"].values
-    A = N+Z
-    x0 = Z
-    x1 = N
-    Eb = (((-10.931704 / ((0.742612 / x0) + x1)) +
-          7.764321) + np.sin(x0 * 0.03747635))
-    if TMS != 'TMS':
-        for i in range(len(A)):
-            if (df['binding_sys'].values[i] == 'Y') or (df['binding_unc'].values[i]*A[i] > 100):
-                Eb[i] = 0
-    return Eb
 
 
 def get_data(obs, heavy_elem, TMS):
@@ -137,7 +54,7 @@ def get_data(obs, heavy_elem, TMS):
         return pd.read_csv(urllib.request.urlopen(req))
 
     df = lc_read_csv("fields=ground_states&nuclides=all")
-    dfE = pd.read_csv('ame2020.csv')
+    dfE = pd.read_csv('tables/ame2020.csv')
 
     df = pd.merge(df, dfE[['z', 'n', 'binding_sys', 'binding_unc']], on=[
                   'z', 'n'], how='inner')
@@ -152,12 +69,8 @@ def get_data(obs, heavy_elem, TMS):
 
         if obsi == 'fake_rad':
             y0i = torch.tensor(radius_formula(df)).view(-1, 1).float()
-        elif obsi == 'binding_BW':
-            y0i = torch.tensor(binding_formula(df, 'BW', TMS)).view(-1, 1).float()
-        elif obsi == 'binding_BW2':
-            y0i = torch.tensor(binding_formula(df, 'BW2', TMS)).view(-1, 1).float()
-        elif obsi == 'binding_PySR':
-            y0i = torch.tensor(PySR_formula(dfE, TMS)).view(-1, 1).float()
+        elif obsi in ['BW', 'BW2', 'WS4']:
+            y0i = torch.tensor(binding_formula(df, obsi, TMS)).view(-1, 1).float()
         elif obsi == 'Z':
             y0 = torch.tensor(df["z"].values).view(-1, 1).float()
         elif obsi == 'N':
@@ -167,7 +80,7 @@ def get_data(obs, heavy_elem, TMS):
             dfobs = getattr(df, obsi)
             df[obsi] = dfobs.apply(lambda x: 0 if (x == ' ') or (
             x == 'STABLE') or (x == '?') else x)
-
+            # df[obsi] = df.apply(lambda x: 0 if (x[obs] == ' ') or (x[obs] == 'STABLE') or (x[obs] == '?') else x[obs], axis=1)
             # turn values estimated by trends of the mass surface (TMS) to zero
             if (obsi == 'binding') and (TMS != 'TMS'):
                 df[obsi] = df.apply(lambda x: 0 if (x['binding_sys'] == 'Y') or (
@@ -198,18 +111,13 @@ def get_data(obs, heavy_elem, TMS):
 def rms_val(y_dat, y_pred):  # returns the value of rms in MeV
     return np.sqrt(((y_dat-y_pred)**2).sum()/y_dat.size()[0])
 
-def rms(model, obs, heavy_mask, TMS_trained, TMS, incl):  
+def rms(model, obs, heavy_mask, TMS_trained, TMS, incl): 
+    
     
     #TMS_trained denotes whether (TMS_trained = 'TMS') or not (TMS_trained = 'off') the model was trained w/wo TMS
     (X_train, X_test), _, _, (y0_mean, y0_std), _ = get_data(obs,heavy_mask,TMS_trained)
     #TMS denotes wether the rms is calculated on the data w/wo TMS
-    (X_train_r, X_test_r), _, (y0_train_r, y0_test_r), (y0_mean_r, y0_std_r), _ = get_data(obs,heavy_mask,TMS)
-    
-    #you can also check the performance of BW and BW2
-    if model == 'BW2': 
-        _, _, (y0_train_emp, y0_test_emp), _, _ = get_data(['binding_BW2'],heavy_mask,TMS_trained)
-    elif model == 'BW':
-        _, _, (y0_train_emp, y0_test_emp), _, _ = get_data(['binding_BW'],heavy_mask,TMS_trained)        
+    (X_train_r, X_test_r), _, (y0_train_r, y0_test_r), (y0_mean_r, y0_std_r), _ = get_data(obs,heavy_mask,TMS)       
     
     # with incl you can choose if you want to calculate the rms on the all data or only on the test data   
     if incl=='test':
@@ -223,7 +131,10 @@ def rms(model, obs, heavy_mask, TMS_trained, TMS, incl):
 
     for pos_obsi in range(len(obs)):
             
-        if isinstance(model, str):
+        if model in ['BW', 'BW2', 'WS4']:
+            #you can also check the performance of the semf
+            
+            _, _, (y0_train_emp, y0_test_emp), _, _ = get_data([model],heavy_mask,TMS_trained)        
             if incl=='test':
                 y0_pred = y0_test_emp
             else:
@@ -232,11 +143,14 @@ def rms(model, obs, heavy_mask, TMS_trained, TMS, incl):
             y_pred = model(X)
             y0_pred = yorig(y_pred,y0_mean, y0_std)
             
-        (yi_dat, yi_pred) = clear_y(y0_dat, y0_dat, y0_pred, pos_obsi)
         
+        (yi_dat, yi_pred) = clear_y(y0_dat, y0_dat, y0_pred, pos_obsi)
+
         Xi = clear_x(y0_dat, X, pos_obsi)
+        # Xi = clear_x(yi_pred, Xi, pos_obsi)
+        
         Ai = Xi.sum(dim=1).view(-1,1)
-        if ((obs[pos_obsi] == 'binding') or (isinstance(model, str))):
+        if ((obs[pos_obsi] == 'binding') or (obs in ['BW', 'BW2', 'WS4'])):
             yi_dat_tot = yi_dat*Ai
             yi_pred_tot = yi_pred*Ai
             #rms for both full Eb and Eb/nucleon are calculated
@@ -251,8 +165,7 @@ def dev_rel(y_dat, y_pred):  # returns the relative deviation MeV
     return ((y_dat-y_pred)/y_dat).abs().median()
 
 def Sn(model, heavy_mask):  #UNDER CONSTRUCTION
-    (X_train, X_test), _, (y0_train, y0_test), (y0_mean,
-                                                y0_std), _ = get_data('data', ['binding', 'sn'], heavy_mask)
+    (X_train, X_test), _, (y0_train, y0_test), (y0_mean, y0_std), _ = get_data('data', ['binding', 'sn'], heavy_mask)
 
     X = torch.cat((X_train, X_test), 0)
     y0_dat = torch.cat((y0_train, y0_test), 0)
@@ -311,3 +224,75 @@ def DeltaE_dat(heavy_mask, obsi): #UNDER CONSTRUCTION
     rms = np.sqrt(((error)**2).sum()/y0_dat[:, 1].size()[0])
 
     return DeltaE_theory, rms
+
+
+def rms_WS4_ME():
+    
+    file_path = os.path.join('tables/WS4_full.txt')
+    df = pd.read_csv(file_path, skiprows=1, header=None, names=['A', 'Z', 'Beta2', 'Beta4', 'Beta6', 'Esh', 'Edef', 'Eexp', 'Eth', 'Mexp', 'Mth'], delim_whitespace=True)
+    
+    # Calculate Eexp and Eth
+    Da = 931.494102
+    mp = 938.2720813
+    mn = 939.565420
+    df["Eexp"] = df["Z"]*mp + (df["A"]-df["Z"])*mn - df["Mexp"] - df["A"]*Da
+    df["Eth"] = df["Z"]*mp + (df["A"]-df["Z"])*mn - df["Mth"] - df["A"]*Da
+    
+    # Calculate RMS between Eexp and Eth, excluding cases where Mexp is 0
+    Eexp_values = df.loc[df["Mexp"] != 0, "Eexp"].values
+    Eth_values = df.loc[df["Mexp"] != 0, "Eth"].values
+    rms = np.sqrt(np.mean((Eexp_values - Eth_values)**2))
+    
+    print(rms)
+
+
+# def delta_np(Z, N):
+#     A = Z+N
+#     a_pair = -5.8166
+#     delta0 = a_pair/A**(1/3)
+#     I=(N-Z)/A
+#     for i in range(len(A)):
+#         if ((N % 2 == 0) & (Z % 2 == 0))[i]:
+#             delta0[i] = delta0[i]*(2 -  abs(I) - I**2)*(17/16)
+#         elif ((N % 2 == 1) & (Z % 2 == 1))[i]:
+#             delta0[i] = delta0[i]*(abs(I) - I**2)
+#         else:
+#             delta0[i] = 0
+#     return delta0
+# def E_WS(df):
+#     N = df["n"].values
+#     Z = df["z"].values
+#     A = N+Z 
+#     I=(N-Z)/A
+    
+#     aV = -15.51
+#     aS = 17.4
+#     aC = 0.709
+#     c_sym = 30.159
+#     kappa = 1.518
+#     ksi = 1.223
+#     cW = 0.87
+#     kappa_s = 0.1536
+#     g1 = 0.01
+#     g2 = -0.5
+#     V0 = -45.856
+#     r0 = 1.38
+#     a0 = 0.764
+#     lambda0 = 26.479
+#     c1 = 0.63
+#     c2 = 1.337
+#     kappa_d = 5.008
+    
+    
+#     I0 = 0.4*A/(A + 200)
+#     eps = (I-I0)**2-I**4    
+#     fs = 1 + kappa_s*eps*A**(1/3)    
+#     a_sym = -c_sym*(1-kappa/A**(1/3)+ksi*(2-abs(I))/(2+abs(I)*A))
+    
+#     eta = DeltaZ*DeltaN/Zm
+#     Delta_W = cW*(np.exp(abs(I))-np.exp(-abs(eta)))
+    
+#     E_LD = aV*A + aS*A**(2/3) + aC*(1-0.76*Z**(-2/3))*Z**2/(A**(1/3)) + \
+#         a_sym*fs*A*I**2 +  delta_np(Z, N) + Delta_W
+        
+#     Eb = E_LD

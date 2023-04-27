@@ -337,10 +337,6 @@ def prepare_nuclear_data(config: argparse.Namespace, recreate: bool = False):
             targets[reg_columns].values
         )
 
-    # don't consider nuclei with high uncertainty in binding energy
-    # BUT only for evaluation!
-    except_binding = (df.binding_unc * (df.z + df.n) > 100).values
-    targets.loc[except_binding, "binding"] = np.nan
 
     y = torch.tensor(targets[list(output_map.keys())].values).float()
 
@@ -352,6 +348,14 @@ def prepare_nuclear_data(config: argparse.Namespace, recreate: bool = False):
     train_mask, test_mask = _train_test_split(
         len(y), config.TRAIN_FRAC, seed=config.SEED
     )
+
+    # don't consider nuclei with high uncertainty in binding energy
+    # but only for validation
+    if config.TMS == "remove":
+        except_binding = (df.binding_unc * (df.z + df.n) > 100).values
+        test_mask[::len(output_map)] = test_mask.view(-1)[::len(output_map)] & ~except_binding
+    elif config.TMS != "keep":
+        raise ValueError(f"Unknown TMS {config.TMS}")
 
     return Data(
         X.to(config.DEV),

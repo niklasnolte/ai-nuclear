@@ -52,12 +52,17 @@ class Logger:
                 msg += "\n".join(sorted(items, key=lambda x: x.split(" ")[0]))
                 print(msg)
         if epoch == self.args.EPOCHS - 1 or epoch == 0:
-            state_dict_path = os.path.join(self.basedir, f"model_{epoch}.pt")
+            state_dict_path = os.path.join(self.basedir, f"model_FULL.pt")
             torch.save(self.model.state_dict(), state_dict_path)
             print("Saved model to:")
             print(os.path.join(self.basedir))
-        elif epoch % self.args.CKPT_FREQ == 0:
-            torch.save(
-                self.model.state_dict(), os.path.join(self.basedir, f"model_{epoch}.pt")
-            )
+        # implement logarithmic checkpoint frequency
+        if self.args.CKPT_FREQ > 0:
+            # check if epoch power of two
+            if epoch & (epoch - 1) == 0:
+                torch.save(
+                    self.model.state_dict(),
+                    os.path.join(self.basedir, f"model_{epoch}.pt"),
+                )
+
         self.epoch += 1

@@ -143,7 +143,7 @@ def regularize_distortion(
                 # for s in S:
                 #     if s > 1e-8:
                 #         last = s
-                loss += torch.log(S[0] / S[-1])
+                loss += torch.log(S[0].abs() / S[1].abs()) + S[2:].abs().sum()
             except torch.linalg.LinAlgError:  # sometimes svd fails with singular matrix
                 loss += torch.zeros(1, device=param.device)
     return loss

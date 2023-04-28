@@ -2,7 +2,6 @@ import os
 import tqdm
 import torch
 import argparse
-import mup
 from data import prepare_nuclear_data, prepare_modular_data
 from model import get_model_and_optim
 from loss import (
@@ -11,6 +10,7 @@ from loss import (
     weight_by_task,
     random_softmax,
     regularize_embedding_dim,
+    regularize_distortion
 )
 from config import Task
 from esam import ESAM
@@ -80,6 +80,8 @@ def train(task: Task, args: argparse.Namespace, basedir: str):
         l_before = train_loss.clone().detach()
         train_losses = train_losses.mean(dim=1)
         train_loss = train_loss.mean()
+        dist = regularize_distortion(model)
+        train_loss += args.DISTORTION * dist
         train_loss.backward()
 
         if isinstance(optimizer, ESAM):
@@ -176,6 +178,7 @@ def train(task: Task, args: argparse.Namespace, basedir: str):
                     for i, target in enumerate(data.output_map.keys()):
                         msg += f"{target:>15}: {val_losses[i].item():.4e} | {val_metrics[i].item():.6f}\n"
 
+                    msg += f"\n{dist}"
                     print(msg)
                     bar.update(args.LOG_FREQ)
 

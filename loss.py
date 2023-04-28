@@ -46,6 +46,7 @@ class WeightScaler(torch.nn.Module):
         scale = scale if scale is not None else self.scale
         return random_softmax(shape, scale)
 
+
 def random_softmax(shape, scale=1):
     x = torch.rand(shape)
     return torch.softmax(scale * x, dim=-1) * x.shape[-1]
@@ -93,11 +94,15 @@ def loss_by_task(
         if target_name in config.TARGETS_CLASSIFICATION:
             size = output_map[target_name]
             out = output[:, output_column : output_column + size]
-            loss[target_column, mask] = F.cross_entropy(out[mask], masked_target.long(), reduction="none")
+            loss[target_column, mask] = F.cross_entropy(
+                out[mask], masked_target.long(), reduction="none"
+            )
             output_column += size
         else:
             out = output[:, output_column]
-            loss[target_column, mask] = F.mse_loss(out[mask], masked_target.float(), reduction="none")
+            loss[target_column, mask] = F.mse_loss(
+                out[mask], masked_target.float(), reduction="none"
+            )
             output_column += 1
     return loss
 
@@ -114,9 +119,9 @@ def regularize_embedding_dim(
     for emb in model.emb:
         # Vt is d_model by d_model. Projecting A -> A @ V @ Vt = USVtVVt = USVt
         try:
-          _, _, Vt = torch.linalg.svd(emb, full_matrices=False)
-        except torch.linalg.LinAlgError: # sometimes svd fails with singular matrix
-          return torch.zeros(1, device=X.device)
+            _, _, Vt = torch.linalg.svd(emb, full_matrices=False)
+        except torch.linalg.LinAlgError:  # sometimes svd fails with singular matrix
+            return torch.zeros(1, device=X.device)
         Vt = Vt[:idx]  # [ idx, d_model]
         # squeeze out the embedding dimension
         embs.append(emb @ Vt.T @ Vt)
@@ -124,6 +129,24 @@ def regularize_embedding_dim(
     loss = loss_by_task(out, Y, output_map, config)
     return loss
 
+
+def regularize_distortion(
+    model: Base,
+) -> torch.Tensor:
+    loss = 0
+    for name, param in model.named_parameters():
+        if "weight" in name:
+            # svd
+            try:
+                _, S, _ = torch.linalg.svd(param, full_matrices=False)
+                # condition number
+                # for s in S:
+                #     if s > 1e-8:
+                #         last = s
+                loss += torch.log(S[0] / S[-1])
+            except torch.linalg.LinAlgError:  # sometimes svd fails with singular matrix
+                loss += torch.zeros(1, device=param.device)
+    return loss
 
 def get_balanced_accuracy(output: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
     """
@@ -141,14 +164,16 @@ def get_balanced_accuracy(output: torch.Tensor, target: torch.Tensor) -> torch.T
 
 
 def get_eval_fn_for(task_name):
-  if task_name == "binding_energy":
-    def eval_fn(output, input_):
-      nprotons = input_[:, 0]
-      nneutrons = input_[:, 1]
-      return output * (nprotons + nneutrons)
-    return eval_fn
-  else:
-    return lambda x, _: x
+    if task_name == "binding_energy":
+
+        def eval_fn(output, input_):
+            nprotons = input_[:, 0]
+            nneutrons = input_[:, 1]
+            return output * (nprotons + nneutrons)
+
+        return eval_fn
+    else:
+        return lambda x, _: x
 
 
 def metric_by_task(

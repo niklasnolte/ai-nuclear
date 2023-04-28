@@ -6,6 +6,7 @@ import mup
 import warnings
 from typing import Callable, Iterable
 from data import Data
+from monotonenorm import direct_norm
 
 
 class Base(nn.Module):
@@ -85,20 +86,22 @@ class BaselineModel(Base):
 
         super().__init__(vocab_size, non_embedded_input_dim, hidden_dim)
 
+        norm_kind = "one"
+        direct_norm = lambda x, *args, **kwargs: x
+
         self.nonlinear = nn.Sequential(
-            nn.Linear(self.input_dim, hidden_dim),
+            direct_norm(nn.Linear(self.input_dim, hidden_dim), kind=norm_kind),
             nn.SiLU(),
-            nn.Linear(self.hidden_dim, hidden_dim),
+            direct_norm(nn.Linear(self.hidden_dim, hidden_dim), kind=norm_kind),
             nn.SiLU(),
         )
-        self.readout = nn.Linear(hidden_dim, output_dim)
+        self.readout = direct_norm(nn.Linear(hidden_dim, output_dim), kind=norm_kind)
         print(sum(p.numel() for p in self.parameters() if p.requires_grad))
 
     def forward_with_embeddings(self, x, embs):  # embs: [ batch_size, 2 * hidden_dim ]
         x = self.embed_input(x, embs)
         x = self.nonlinear(x)  # [ batch_size, hidden_dim ]
         return self.readout(x)  # [ batch_size, output_dim ]
-
 
 class SplitupModel(Base):
     def __init__(
@@ -290,8 +293,8 @@ def get_model_and_optim(data: Data, config):
         non_embedded_input_dim=data.X.shape[1] - len(data.vocab_size),
         output_dim=output_dim,
     )
-    model = make_mup(model_fn, hidden_dim=config.HIDDEN_DIM).to(config.DEV)
-    # model = model_fn(hidden_dim=config.HIDDEN_DIM).to(config.DEV)
+    # model = make_mup(model_fn, hidden_dim=config.HIDDEN_DIM).to(config.DEV)
+    model = model_fn(hidden_dim=config.HIDDEN_DIM).to(config.DEV)
     param_groups = [
         {"params": [p for n, p in model.named_parameters() if "bias" in n.lower()]},
         {
@@ -302,8 +305,8 @@ def get_model_and_optim(data: Data, config):
         },
     ]
     # optimizer = mup.MuSGD(param_groups, lr=config.LR, momentum=.99, nesterov=True)
-    optimizer = mup.MuAdam(param_groups, lr=config.LR)
+    # optimizer = mup.MuAdam(param_groups, lr=config.LR)
     # split into weights biases
-    # optimizer = torch.optim.AdamW(param_groups, lr=config.LR, amsgrad=True)
+    optimizer = torch.optim.Adam(param_groups, lr=config.LR, amsgrad=True)
     # optimizer = torch.optim.AdamW(model, lr=config.LR, amsgrad=True)
     return model, optimizer

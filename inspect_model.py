@@ -1,49 +1,36 @@
 # %%
 import torch
-from data import get_data
 import pickle
 import matplotlib.pyplot as plt
 from matplotlib.markers import MarkerStyle
 # t-sne
 from sklearn.decomposition import PCA
-plt.style.use('mystyle-bright.mplstyle')
+# plt.style.use('mystyle-bright.mplstyle')
 # %%
 def make_path(m):
     ms = MarkerStyle(m)
     return ms.get_path().transformed(ms.get_transform())
 # %%
-sd = torch.load("models/test/epoch_19000.pt")
-model = torch.load("models/test/model.pt")
+state_dict = torch.load("results/FULL/model_baseline/wd_2e-06/lr_0.002/epochs_100000/trainfrac_0.9/hiddendim_25/dimregcoeff_0.0/distortion_0.001/dimregexp_-1.5/seed_42/randomweights_0.0/targetsclassification_None/targetsregression_z:1-n:1-binding_energy:1-radius:1/model_FULL.pt")
+state_dict = state_dict.state_dict()
 # %%
-
-_, _, _, _, vocab_size = get_data() # vocab_size = (Z, N)
-
-# hidden_dim = sd["emb.weight"].shape[1]
-# model = Model(vocab_size, hidden_dim).requires_grad_(False)
-model.load_state_dict(sd)
-
-# %%
-all_protons = torch.tensor(list(range(vocab_size[0])))
-all_neutrons = torch.tensor(list(range(vocab_size[1])))
-
-
-# %%
-protons = model.emb_proton(all_protons)
-neutrons = model.emb_neutron(all_neutrons)
-
+protons = state_dict["emb.0"]
+neutrons = state_dict["emb.1"]
 # %%
 # PCA the embeddings
-for p, ap in zip((protons, neutrons), (all_protons, all_neutrons)):
-  plt.figure(figsize=(10,10))
+for particle in (protons, neutrons):
   # set axes off
-  plt.axis('off')
-  pca = PCA(n_components=2)
-  embs_pca = pca.fit_transform(p.detach().cpu().numpy())
-  sc = plt.scatter(*embs_pca.T, c=ap, cmap="viridis", s=500)
-  ax = plt.gca()
-  sc.set_paths([make_path(f"${m:02d}$") for m in ap])
-  plt.tight_layout()
-  plt.savefig("plots/emb_pca_" + ("protons" if p is protons else "neutrons") + ".pdf")
+  n_components = 3
+  pca = PCA(n_components=n_components)
+  for comp1 in range(n_components):
+    for comp2 in range(comp1+1, n_components):
+      plt.figure(figsize=(10,10))
+      embs_pca = pca.fit_transform(particle.detach().cpu().numpy())
+      sc = plt.scatter(embs_pca[:,comp1], embs_pca[:,comp2], c=range(len(particle)), cmap="viridis", s=150)
+      sc.set_paths([make_path(f"${m:02d}$") for m,_ in enumerate(particle)])
+      plt.title(("protons" if particle is protons else "neutrons") + f" PCA {comp1} v {comp2}")
+      plt.tight_layout()
+      plt.show()
   #annotate
   # for i, txt in enumerate(ap):
   #     plt.annotate(txt.item(), (embs_pca[i,0], embs_pca[i,1]))
@@ -51,4 +38,6 @@ for p, ap in zip((protons, neutrons), (all_protons, all_neutrons)):
 #   plt.xlim(-0.1, 0.1)
 #   plt.ylim(-0.1, 0.1)
 # %%
+embs_pca.shape
 
+# %%

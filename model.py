@@ -8,8 +8,55 @@ from typing import Callable, Iterable
 from data import Data
 import os
 from monotonenorm import direct_norm, GroupSort
+import torch.nn.utils.parametrize as p
 
+class RNN(nn.Module):
+    def __init__(
+        self,
+        vocab_size: Iterable,
+        non_embedded_input_dim: int,
+        hidden_dim: int,
+        output_dim: int,
+        depth: int = 2,
+        lipschitz: bool = False,
+    ):
+        super().__init__()
+        self.hidden_dim = hidden_dim
+        self.proton_emb = torch.nn.init.kaiming_uniform_(torch.empty(1, hidden_dim))
+        self.neutron_emb = torch.nn.init.kaiming_uniform_(torch.empty(1, hidden_dim))
+        self.task_emb = torch.nn.init.kaiming_uniform_(torch.empty(vocab_size[-1], hidden_dim))
+        self.proton_emb = nn.Parameter(self.proton_emb)
+        self.neutron_emb = nn.Parameter(self.neutron_emb)
+        self.task_emb = nn.Parameter(self.task_emb)
 
+        self.protonet = nn.Sequential(
+            *[ResidualBlock(hidden_dim, activation=nn.SiLU()) for _ in range(depth)])
+        self.neutronet = nn.Sequential(
+            *[ResidualBlock(hidden_dim, activation=nn.SiLU()) for _ in range(depth)])
+        self.nonlinear = nn.Sequential(
+            nn.Linear(hidden_dim * 2, hidden_dim),
+            nn.SiLU(),
+            # *[ResidualBlock(hidden_dim, activation=nn.SiLU()) for _ in range(depth)],
+        )
+        self.readout = nn.Linear(2 * hidden_dim, output_dim)
+
+    def _protons(self, n):
+        p = self.proton_emb
+        return torch.vstack([(p:=self.protonet(p)) for _ in range(n+1)]) 
+              
+    def _neutrons(self, n):
+        p = self.neutron_emb
+        return torch.vstack([(p:=self.neutronet(p)) for _ in range(n+1)]) 
+              
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        p_max, n_max = x[:, 0].amax(), x[:, 1].amax()
+        protons = self._protons(p_max)[x[:, 0]]
+        neutrons = self._neutrons(n_max)[x[:, 1]]
+        out = torch.cat([protons, neutrons], dim=1)
+        # out = self.nonlinear(out)
+        return torch.sigmoid(self.readout(out))
+
+   
 class Base(nn.Module):
     def __init__(
         self,
@@ -54,7 +101,10 @@ class Base(nn.Module):
 
 class ResidualBlock(nn.Module):
     def __init__(
-        self, d_model: int, dropout: float = 0.0, activation: nn.Module = nn.ReLU(), 
+        self,
+        d_model: int,
+        dropout: float = 0.0,
+        activation: nn.Module = nn.ReLU(),
         norm: Callable = None,
     ):
         norm = norm or (lambda x: x)
@@ -101,19 +151,23 @@ class BaselineModel(Base):
         self.nonlinear = nn.Sequential(
             nn.Linear(self.input_dim, hidden_dim),
             nn.SiLU(),
-            *[ResidualBlock(hidden_dim, norm=norm, activation=act) for _ in range(depth)],
+            *[
+                ResidualBlock(hidden_dim, norm=norm, activation=act)
+                for _ in range(depth)
+            ],
         )
         self.readout = norm(nn.Linear(hidden_dim, output_dim))
 
     def forward_with_embeddings(self, x, embs):  # embs: [ batch_size, 2 * hidden_dim ]
         x = self.embed_input(x, embs)
         x = self.nonlinear(x)  # [ batch_size, hidden_dim ]
-        return self.readout(x)  # [ batch_size, output_dim ]
-
+        return torch.sigmoid(self.readout(x))  # [ batch_size, output_dim ]
 
 def get_model_fn(config):
     if config.MODEL == "baseline":
         return BaselineModel
+    elif config.MODEL == "rnn":
+        return RNN
     else:
         raise ValueError(
             f"Unknown model: {config.MODEL}, choose between 'baseline', 'splitup', 'transformer' and 'moe'"
@@ -198,7 +252,7 @@ def get_model_and_optim(data: Data, config):
         non_embedded_input_dim=data.X.shape[1] - len(data.vocab_size),
         output_dim=output_dim,
         depth=config.DEPTH,
-        lipschitz=config.LIPSCHITZ=="true",
+        lipschitz=config.LIPSCHITZ == "true",
     )
     if hasattr(config, "basedir"):
         # FIXME: this is a terrible hack to avoid saving shapes outside of the

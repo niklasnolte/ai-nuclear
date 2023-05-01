@@ -1,8 +1,6 @@
-import os
 import tqdm
-import argparse
+import math
 import torch
-from torch.utils.data import DataLoader, TensorDataset
 from torch.optim.lr_scheduler import (
     CosineAnnealingLR,
     ReduceLROnPlateau,
@@ -19,6 +17,29 @@ from argparse import Namespace
 from functools import cached_property
 
 
+#5 x faster for some fkin reason
+class Loader:
+    def __init__(self, X, y, batch_size=1024):
+        self.X = X
+        self.y = y
+        self.batch_size = batch_size
+        self.randperm = torch.randperm(len(X), device=X.device)
+
+    def __iter__(self):
+        self.current_idx = 0
+        return self
+
+    def __next__(self):
+        if self.current_idx >= len(self.X):
+            raise StopIteration
+        idx = self.randperm[self.current_idx : self.current_idx + self.batch_size]
+        self.current_idx += self.batch_size
+        return self.X[idx], self.y[idx]
+
+    def __len__(self):
+        return math.ceil(len(self.X) / self.batch_size)
+
+
 class Trainer:
     def __init__(self, problem: Task, args: Namespace):
         self.problem = problem
@@ -27,11 +48,9 @@ class Trainer:
         self.data = (
             prepare_modular_data if problem == Task.MODULAR else prepare_nuclear_data
         )(args)
-        self.loader = DataLoader(
-            TensorDataset(
-                self.data.X[self.data.train_mask], self.data.y[self.data.train_mask]
-            ),
-            shuffle=True,
+        self.loader = Loader(
+            self.data.X[self.data.train_mask],
+            self.data.y[self.data.train_mask],
             batch_size=args.BATCH_SIZE,
         )
         # prepare model
@@ -56,10 +75,11 @@ class Trainer:
 
     def train(self):
         bar = (tqdm.trange if not self.args.WANDB else range)(self.args.EPOCHS)
-        for _ in bar:
+        for epoch in bar:
             for x, y in self.loader:
                 self.train_step(x, y)
-            self.val_step(log=True)
+            if epoch % self.args.LOG_FREQ == 0:
+                self.val_step(log=True)
 
     def train_step(self, X, y):
         self.model.train()

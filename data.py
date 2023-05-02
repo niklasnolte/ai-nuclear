@@ -23,6 +23,22 @@ def delta(Z, N):
     return delta
 
 
+def shell(Z, N):
+    #calculates the shell effects according to "Mutual influence of terms in a semi-empirical" Kirson
+    warnings.filterwarnings("ignore", category=RuntimeWarning) 
+    alpham = -1.9
+    betam = 0.14
+    magic = [2, 8, 20, 28, 50, 82, 126, 184]
+
+    def find_nearest(lst, target):
+        return min(lst, key=lambda x: abs(x - target))
+    nup = np.array([abs(x - find_nearest(magic, x)) for x in Z])
+    nun = np.array([abs(x - find_nearest(magic, x)) for x in N])
+    P = nup*nun/(nup+nun)
+    P[np.isnan(P)] = 0
+    return alpham*P + betam*P**2
+
+
 def semi_empirical_mass_formula(Z, N):
     A = N + Z
     aV = 15.75
@@ -39,6 +55,54 @@ def semi_empirical_mass_formula(Z, N):
     Eb[Eb < 0] = 0
     return Eb / A * 1000  # keV
 
+def BW2_mass_formula(Z, N):
+    A = N+Z    
+    
+    aV = 16.58
+    aS = -26.95
+    aC = -0.774
+    aA = -31.51
+    axC = 2.22
+    aW = -43.4
+    ast = 55.62
+    aR = 14.77
+    
+    Eb = aV*A + aS*A**(2/3) + aC*Z**2/(A**(1/3)) + \
+        aA*(N-Z)**2/A + delta(Z, N) + shell(Z, N) + aR*A**(1/3) + axC*Z**(4/3)/A**(1/3) + \
+        aW*abs(N-Z)/A + ast*(N-Z)**2/A**(4/3)
+    return Eb/A
+
+def WS4_mass_formula(df):  
+
+    N = df["n"].values
+    Z = df["z"].values
+    A = N+Z 
+    Da = 931.494102    
+    mp = 938.78307
+    mn = 939.56542
+
+
+    file_path = os.path.join(os.path.dirname(__file__), 'tables', 'WS4.txt')
+
+    df_WS4 = pd.read_fwf(file_path, widths=[9, 9, 15, 15])
+    
+    df_WS4['Z'] = df_WS4['Z'].astype(float)
+    df_WS4['N'] = df_WS4['A'].astype(float) - df_WS4['Z']
+    
+    # Merge the two dataframes based on 'Z' and 'N'
+    merged_df = pd.merge(df, df_WS4, how='left', left_on=['z', 'n'], right_on=['Z', 'N'])
+    
+    merged_df['WS4'] = Z*mp + N*mn - merged_df['WS4'].astype(float) - A*Da
+    
+    # Create a new column 'WS4' in the merged dataframe and fill it with values from 'WS4' column in df_WS4
+    merged_df['WS4'] = merged_df['WS4'].fillna(0)
+    
+    # Drop unnecessary columns from the merged dataframe
+    merged_df = merged_df.drop(['A', 'Z', 'N', 'WS4+RBF'], axis=1)
+    
+    Eb = merged_df['WS4'].values.astype(float)
+        
+    return Eb/A
 
 def apply_to_df_col(column):
     def wrapper(fn):
@@ -169,6 +233,10 @@ def get_targets(df):
     targets["binding"] = get_binding_energy_from(df)
     # binding energy per nucleon minus semi empirical mass formula
     targets["binding_semf"] = targets.binding - semi_empirical_mass_formula(df.z, df.n)
+    # binding energy per nucleon minus semi empirical mass formula (including shell effects)  
+    targets["binding_BW2"] = targets.binding - BW2_mass_formula(df.z, df.n)
+    # binding energy per nucleon minus WS4 formula   
+    targets["binding_WS4"] = targets.binding - WS4_mass_formula(df)
     # radius in fm
     targets["radius"] = get_radius_from(df)
     # half life in log10(sec)

@@ -11,7 +11,7 @@ class Logger:
         self.model = model
         # FIXME: this is a hack to avoid logging outside train.py
         if hasattr(args, "basedir"):
-            self.basedir = args.basedir 
+            self.basedir = args.basedir
             with open(os.path.join(args.basedir, "args.yaml"), "w") as f:
                 yaml.dump(vars(args), f)
             if args.WANDB:
@@ -24,7 +24,7 @@ class Logger:
     def log(self, metrics=None, epoch=None):
         if self.basedir is None: return -1
         epoch = epoch if epoch is not None else self.epoch
-        if epoch % self.args.LOG_FREQ == 0:
+        if epoch % self.args.LOG_FREQ == 0: # TODO check best model every epoch?
             val_loss = metrics["val_loss_all"]
             # keep track of the best model
             if val_loss < self.best_loss:
@@ -47,8 +47,9 @@ class Logger:
                     if "train" in k
                 ]
                 val_items = [f"{v:<8.2e}" for k, v in metrics.items() if "val" in k]
-                items = [" | ".join([x, y]) for x, y in zip(train_items, val_items)]
-                msg = f"Epoch {epoch:<14} | {'Train':^8} | {'Val':^8}\n"
+                hold_out_items = [f"{v:<8.2e}" for k, v in metrics.items() if "holdout" in k]
+                items = [" | ".join(x) for x in zip(train_items, val_items, hold_out_items)]
+                msg = f"Epoch {epoch:<14} | {'Train':^8} | {'Val':^8} | {'holdout':^8}\n"
                 msg += "\n".join(sorted(items, key=lambda x: x.split(" ")[0]))
                 print(msg)
         if epoch == self.args.EPOCHS - 1 or epoch == 0:

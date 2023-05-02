@@ -103,7 +103,7 @@ class Trainer:
             out_ = self._unscale_output(out.clone())  # reg_targets are rescaled
             y_ = self.unscaled_y
             metrics_dict = {}
-            masks = {"train": self.data.train_mask, "val": self.data.val_mask}
+            masks = {"train": self.data.train_mask, "val": self.data.val_mask, "holdout" : self.data.hold_out_mask}
             for name, mask in masks.items():
                 losses, num_samples = self.loss_by_task(task[mask], out[mask], y[mask])
                 metrics, _ = self.metrics_by_task(task[mask], out_[mask], y_[mask])

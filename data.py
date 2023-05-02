@@ -70,6 +70,8 @@ def BW2_mass_formula(Z, N):
     Eb = aV*A + aS*A**(2/3) + aC*Z**2/(A**(1/3)) + \
         aA*(N-Z)**2/A + delta(Z, N) + shell(Z, N) + aR*A**(1/3) + axC*Z**(4/3)/A**(1/3) + \
         aW*abs(N-Z)/A + ast*(N-Z)**2/A**(4/3)
+    
+    Eb[Eb < 0] = 0
     return Eb/A
 
 def WS4_mass_formula(df):  
@@ -101,7 +103,8 @@ def WS4_mass_formula(df):
     merged_df = merged_df.drop(['A', 'Z', 'N', 'WS4+RBF'], axis=1)
     
     Eb = merged_df['WS4'].values.astype(float)
-        
+    
+    Eb[Eb < 0] = 0       
     return Eb/A
 
 def apply_to_df_col(column):

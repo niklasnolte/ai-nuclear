@@ -155,7 +155,7 @@ def get_isospin_from(string):
 
 def get_binding_energy_from(df):
     binding = df.binding.replace(" ", "nan").astype(float)
-    return binding  
+    return binding
 
 
 def get_radius_from(df):
@@ -221,17 +221,21 @@ def get_nuclear_data(recreate=False):
     if recreate or not os.path.exists("data/ground_states.csv"):
         df = lc_read_csv("fields=ground_states&nuclides=all")
         df.to_csv("data/ground_states.csv", index=False)
-    else:
-        # df = pd.read_csv("data/ground_states.csv")
-        df2 = pd.read_csv("data/ame2020.csv").set_index(["z", "n"])
-        df2 = df2[~df2.index.duplicated(keep="first")]
-        df = pd.read_csv("data/ground_states.csv").set_index(["z", "n"])
-        df["binding_unc"] = df2.binding_unc
-        df["binding_sys"] = df2.binding_sys
-        df.reset_index(inplace=True)
 
+    df2 = pd.read_csv("data/ame2020.csv").set_index(["z", "n"])
+    df2 = df2[~df2.index.duplicated(keep="first")]
+    df = pd.read_csv("data/ground_states.csv").set_index(["z", "n"])
+    df["binding_unc"] = df2.binding_unc
+    df["binding_sys"] = df2.binding_sys
+    df.reset_index(inplace=True)
     df = df[(df.z > 8) & (df.n > 8)]
-    return df
+
+    zn2016 = pd.read_csv("data/2016.csv").set_index(["z","n"])
+    zn2020 = pd.read_csv("data/2020.csv").set_index(["z","n"])
+    not_in_2016 = zn2020[~zn2020.index.isin(zn2016.index)].index
+    test_idx = df.set_index(["z","n"]).index.isin(not_in_2016)
+
+    return df, test_idx
 
 
 Data = namedtuple(
@@ -244,28 +248,9 @@ Data = namedtuple(
         "regression_transformer",
         "train_mask",
         "val_mask",
+        "hold_out_mask",
     ],
 )
-
-
-def _train_test_split_exact(X, train_frac, n_embedding_inputs, seed=1):
-    """
-    Take exactly train_frac of the data as training data.
-    """
-    # TODO shuffle data when using SGD
-    torch.manual_seed(seed)
-    while True:
-        train_mask = torch.ones(X.shape[0], dtype=torch.bool)
-        train_mask[int(train_frac * X.shape[0]) :] = False
-        train_mask = train_mask[torch.randperm(X.shape[0])]
-        for i in range(n_embedding_inputs):
-            if len(X[train_mask][:, i].unique()) != len(X[:, i].unique()):
-                print("resampling train mask")
-                break
-        else:
-            break
-    test_mask = ~train_mask
-    return train_mask, test_mask
 
 
 def _train_test_split_sampled(X, train_frac, n_embedding_inputs, seed=1):
@@ -304,7 +289,8 @@ def prepare_nuclear_data(config: argparse.Namespace, recreate: bool = False):
         recreate (bool, optional): Force re-download of data and save to csv. Defaults to False.
     returns (Data): namedtuple of X, y, vocab_size, output_map, quantile_transformer
     """
-    df = get_nuclear_data(recreate=recreate)
+    df, hold_out_idx = get_nuclear_data(recreate=recreate)
+    hold_out_X = torch.tensor(df[hold_out_idx][["z","n"]].values)
     targets = get_targets(df)
 
     X = torch.tensor(targets[["z", "n"]].values)
@@ -349,6 +335,10 @@ def prepare_nuclear_data(config: argparse.Namespace, recreate: bool = False):
         len(y), config.TRAIN_FRAC, seed=config.SEED
     )
 
+    hold_out_mask = (X[:,:2].unsqueeze(1) == hold_out_X).all(-1).any(-1)
+    train_mask = train_mask & ~hold_out_mask
+    test_mask = test_mask & ~hold_out_mask
+
     # don't consider nuclei with high uncertainty in binding energy
     # but only for validation
     if config.TMS == "remove":
@@ -365,6 +355,7 @@ def prepare_nuclear_data(config: argparse.Namespace, recreate: bool = False):
         feature_transformer,
         train_mask.to(config.DEV),
         test_mask.to(config.DEV),
+        hold_out_mask.to(config.DEV),
     )
 
 
@@ -408,4 +399,5 @@ def prepare_modular_data(args: argparse.Namespace):
         feature_transformer,
         train_mask.to(args.DEV),
         test_mask.to(args.DEV),
+        None
     )

@@ -84,7 +84,7 @@ def WS4_mass_formula(df):
     mn = 939.56542
 
 
-    file_path = os.path.join(os.path.dirname(__file__), 'tables', 'WS4.txt')
+    file_path = os.path.join(os.path.dirname(__file__), 'data', 'WS4.txt')
 
     df_WS4 = pd.read_fwf(file_path, widths=[9, 9, 15, 15])
     

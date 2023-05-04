@@ -320,6 +320,7 @@ Data = namedtuple(
         "train_mask",
         "val_mask",
         "hold_out_mask",
+        "scaled_idxs",
     ],
 )
 
@@ -418,6 +419,11 @@ def prepare_nuclear_data(config: argparse.Namespace, recreate: bool = False):
     elif config.TMS != "keep":
         raise ValueError(f"Unknown TMS {config.TMS}")
 
+    # scale those by A
+    binding_idxs = [i for i,x in enumerate(output_map.keys()) if "binding" in x]
+    scaled_idxs = [sum(list(output_map.values())[:idx]) for idx in binding_idxs]
+
+
     return Data(
         X.to(config.DEV),
         y.to(config.DEV),
@@ -427,6 +433,7 @@ def prepare_nuclear_data(config: argparse.Namespace, recreate: bool = False):
         train_mask.to(config.DEV),
         test_mask.to(config.DEV),
         hold_out_mask.to(config.DEV),
+        scaled_idxs
     )
 
 

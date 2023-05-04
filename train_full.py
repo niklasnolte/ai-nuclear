@@ -79,7 +79,7 @@ class Trainer:
             for x, y in self.loader:
                 self.train_step(x, y)
             if epoch % self.args.LOG_FREQ == 0:
-                self.val_step(log=True)
+                self.val_step(epoch, log=True)
 
     def train_step(self, X, y):
         self.model.train()
@@ -88,12 +88,16 @@ class Trainer:
         task = X[:, len(self.data.vocab_size) - 1]
         losses, num_samples = self.loss_by_task(task, out, y)
         loss = losses.sum() / num_samples.sum()  # TODO weights?
+        # gradient clipping
+        for param in self.model.parameters():
+          if param.grad is not None:
+            param.grad = torch.clamp(param.grad, -.1, .1)
         loss.backward()
         self.optimizer.step()
         self.scheduler.step()
         return out, losses, num_samples
 
-    def val_step(self, log=False):
+    def val_step(self, epoch, log=False):
         # This serves as the logging step as well
         X, y = self.data.X, self.data.y
         task = self.all_tasks
@@ -111,7 +115,7 @@ class Trainer:
                 metrics_dict.update(m)
 
         if log:
-            self.logger.log(metrics_dict)
+            self.logger.log(metrics_dict, epoch)
         return metrics_dict
 
     def construct_metrics(self, losses, metrics, num_samples, prefix):
@@ -188,7 +192,9 @@ class Trainer:
         else:
             A = self.data.X[:: self.num_tasks, :2].sum(1).view(-1, 1)
         out = torch.from_numpy(out).to(self.args.DEV)
-        out[:, :2] = out[:, :2] * (A)
+        # self.data.output_map gives the size of each output
+        # we want to scale binding, so the binding idx is the sum of all sizes before it
+        out[:, self.data.scaled_idxs] = out[:, self.data.scaled_idxs] * A
         return out
 
     @cached_property

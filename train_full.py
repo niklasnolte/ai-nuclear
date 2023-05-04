@@ -73,6 +73,11 @@ class Trainer:
         # misc
         self.num_tasks = len(self.data.output_map)
 
+    def change_model_width(self, width):
+        self.args.HIDDEN_DIM = width
+        self.model, self.optimizer = get_model_and_optim(self.data, self.args)
+
+
     def train(self):
         bar = (tqdm.trange if not self.args.WANDB else range)(self.args.EPOCHS)
         for epoch in bar:
@@ -229,4 +234,12 @@ class Trainer:
             raise ValueError(f"Unknown scheduler {args.SCHED}")
 
 
-train = lambda *args: Trainer(*args).train()
+def train(*args):
+  trainer = Trainer(*args)
+  n_boosting_rounds = 5
+  hidden_dim_schedule = [trainer.args.HIDDEN_DIM//(2**i) for i in range(n_boosting_rounds)][::-1]
+  for boosting_it in range(n_boosting_rounds):
+    trainer.change_model_width(hidden_dim_schedule[boosting_it])
+    trainer.train()
+    with torch.no_grad():
+      trainer.data.y.data -= trainer.model(trainer.data.X).data

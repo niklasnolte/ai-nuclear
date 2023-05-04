@@ -25,10 +25,10 @@ def train(task: Task, args: argparse.Namespace, basedir: str):
     best_model = None
     best_loss = float("inf")
 
-    y_train = data.y[data.train_mask]
-    y_val = data.y[data.val_mask]
-    X_train = data.X[data.train_mask]
-    X_val = data.X[data.val_mask]
+    y_train = data.y.clone()
+    y_train[~data.train_mask] = float("nan")
+    y_val = data.y.clone()
+    y_val[~data.val_mask] = float("nan")
 
     model, optimizer = get_model_and_optim(data, args)
     # optimizer = ESAM(optimizer.param_groups, optimizer)
@@ -60,7 +60,7 @@ def train(task: Task, args: argparse.Namespace, basedir: str):
 
         out = model(data.X)
         train_losses = loss_by_task(
-            out[data.train_mask], y_train, data.output_map, args
+            out, y_train, data.output_map, args
         )
         if args.RANDOM_WEIGHTS > 0:
             weight_scaler = random_softmax(weights.shape, scale=args.RANDOM_WEIGHTS).to(
@@ -71,7 +71,7 @@ def train(task: Task, args: argparse.Namespace, basedir: str):
         # TODO i don't think that properly works together with ESAM
         if args.DIMREG_COEFF > 0:
             dimreg = regularize_embedding_dim(
-                model, data.X[data.train_mask], data.y[data.train_mask], data.output_map, args
+                model, data.X, y_train, data.output_map, args
             )
             train_losses += args.DIMREG_COEFF * dimreg
 
@@ -88,7 +88,7 @@ def train(task: Task, args: argparse.Namespace, basedir: str):
 
             with torch.no_grad():
                 train_losses_after = loss_by_task(
-                    model(X_train), y_train, data.output_map, args
+                    model(data.X), y_train, data.output_map, args
                 )
                 l_after = weights * train_losses_after
                 instance_sharpness = l_after - l_before
@@ -107,7 +107,7 @@ def train(task: Task, args: argparse.Namespace, basedir: str):
             model.require_backward_grad_sync = True
             model.require_forward_param_sync = False
             selected_losses = loss_by_task(
-                model(X_train[indices]), y_train[indices], data.output_map, args
+                model(data.X[indices]), y_train[indices], data.output_map, args
             )
             selected_loss = (weights * selected_losses).mean()
             selected_loss.backward()
@@ -119,23 +119,23 @@ def train(task: Task, args: argparse.Namespace, basedir: str):
             with torch.no_grad():
                 model.eval()
                 train_metrics = metric_by_task(
-                    out[data.train_mask],
-                    X_train,
+                    out,
+                    data.X,
                     y_train,
                     data.output_map,
                     args,
                     qt=data.regression_transformer,
                 )
                 val_metrics = metric_by_task(
-                    out[data.val_mask],
-                    X_val,
+                    out,
+                    data.X,
                     y_val,
                     data.output_map,
                     args,
                     qt=data.regression_transformer,
                 )
                 val_losses = loss_by_task(
-                    out[data.val_mask], y_val, data.output_map, args
+                    out, y_val, data.output_map, args
                 ).mean(dim=1)
                 val_loss = (weights * val_losses).mean()
                 # keep track of the best model

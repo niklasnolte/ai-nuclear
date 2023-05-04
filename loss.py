@@ -141,7 +141,7 @@ def get_balanced_accuracy(output: torch.Tensor, target: torch.Tensor) -> torch.T
 
 
 def get_eval_fn_for(task_name):
-  if task_name == "binding_energy":
+  if "binding" in task_name:
     def eval_fn(output, input_):
       nprotons = input_[:, 0]
       nneutrons = input_[:, 1]
@@ -184,6 +184,7 @@ def metric_by_task(
     ]
     target_column = 0
     targets = targets.clone()
+    output = output.clone()
     for target_name in classification_targets:
         mask = ~torch.isnan(targets[:, target_column])
         masked_target = targets[:, target_column][mask].long()

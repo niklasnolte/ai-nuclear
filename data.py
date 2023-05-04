@@ -73,7 +73,7 @@ def BW2_mass_formula(Z, N):
         aW*abs(N-Z)/A + ast*(N-Z)**2/A**(4/3)
 
     Eb[Eb < 0] = 0
-    return Eb/A
+    return Eb / A * 1000  # keV
 
 def WS4_mass_formula(df):
 
@@ -106,7 +106,7 @@ def WS4_mass_formula(df):
     Eb = merged_df['WS4'].values.astype(float)
 
     Eb[Eb < 0] = 0
-    return Eb/A
+    return Eb / A * 1000  # keV
 
 def apply_to_df_col(column):
     def wrapper(fn):

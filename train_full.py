@@ -31,6 +31,7 @@ def train(task: Task, args: argparse.Namespace, basedir: str):
     y_val[~data.val_mask] = float("nan")
 
     model, optimizer = get_model_and_optim(data, args)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, 1000, 2, 1e-5)
     # optimizer = ESAM(optimizer.param_groups, optimizer)
 
     if args.WANDB:
@@ -114,6 +115,7 @@ def train(task: Task, args: argparse.Namespace, basedir: str):
             optimizer.second_step(True)
         else:
             optimizer.step()
+            scheduler.step()
 
         if epoch % args.LOG_FREQ == 0:
             with torch.no_grad():

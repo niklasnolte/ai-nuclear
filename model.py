@@ -90,6 +90,8 @@ class BaselineModel(Base):
             nn.SiLU(),
             nn.Linear(self.hidden_dim, hidden_dim),
             nn.SiLU(),
+            nn.Linear(self.hidden_dim, hidden_dim),
+            nn.SiLU(),
         )
         self.readout = nn.Linear(hidden_dim, output_dim)
         print(sum(p.numel() for p in self.parameters() if p.requires_grad))

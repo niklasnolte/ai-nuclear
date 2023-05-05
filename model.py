@@ -52,29 +52,33 @@ class Base(nn.Module):
 
 class ResidualBlock(nn.Module):
     def __init__(
-        self, d_model: int, dropout: float = 0.0, activation: nn.Module = nn.SiLU
+        self, d_model: int, activation: nn.Module = nn.SiLU
     ):
         super().__init__()
-        self.dropout = nn.Dropout(p=dropout)
         self.ff = nn.Sequential(
             nn.Linear(d_model, d_model * 2),
             activation(),
             nn.Linear(d_model * 2, d_model),
         )
-        # self.norm = nn.LayerNorm(d_model, elementwise_affine=False)
-        self.norm = nn.BatchNorm1d(d_model, affine=False)
+        self.norm = nn.LayerNorm(d_model, elementwise_affine=False)
+        # self.norm = nn.BatchNorm1d(d_model, affine=False)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
         Args:
             x: Tensor, shape [batch_size, seq_len, d_model]
         """
-        return self.norm(x + self.dropout(self.ff(x)))
+        return self.norm(x + self.ff(x))
 
 
 class BaselineModel(Base):
     def __init__(
-        self, vocab_size: Iterable, non_embedded_input_dim: int, hidden_dim: int, output_dim: int
+        self,
+        vocab_size: Iterable,
+        non_embedded_input_dim: int,
+        hidden_dim: int,
+        output_dim: int,
+        depth: int = 2,
     ):
         """
         :param vocab_size: number of tokens in the vocabulary,
@@ -84,21 +88,20 @@ class BaselineModel(Base):
         """
 
         super().__init__(vocab_size, non_embedded_input_dim, hidden_dim)
-
         self.nonlinear = nn.Sequential(
             nn.Linear(self.input_dim, hidden_dim),
             nn.SiLU(),
-            nn.Linear(self.hidden_dim, hidden_dim),
-            nn.SiLU(),
+            *[
+                ResidualBlock(hidden_dim)
+                for _ in range(depth)
+            ],
         )
         self.readout = nn.Linear(hidden_dim, output_dim)
-        print(sum(p.numel() for p in self.parameters() if p.requires_grad))
 
     def forward_with_embeddings(self, x, embs):  # embs: [ batch_size, 2 * hidden_dim ]
         x = self.embed_input(x, embs)
         x = self.nonlinear(x)  # [ batch_size, hidden_dim ]
         return self.readout(x)  # [ batch_size, output_dim ]
-
 
 class SplitupModel(Base):
     def __init__(
@@ -289,6 +292,7 @@ def get_model_and_optim(data: Data, config):
         vocab_size=data.vocab_size,
         non_embedded_input_dim=data.X.shape[1] - len(data.vocab_size),
         output_dim=output_dim,
+        depth=config.DEPTH,
     )
     model = make_mup(model_fn, hidden_dim=config.HIDDEN_DIM).to(config.DEV)
     # model = model_fn(hidden_dim=config.HIDDEN_DIM).to(config.DEV)

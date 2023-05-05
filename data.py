@@ -72,7 +72,7 @@ def BW2_mass_formula(Z, N):
         aW*abs(N-Z)/A + ast*(N-Z)**2/A**(4/3)
 
     Eb[Eb < 0] = 0
-    return Eb/A
+    return Eb/A * 1000
 
 def WS4_mass_formula(df):
 
@@ -105,7 +105,7 @@ def WS4_mass_formula(df):
     Eb = merged_df['WS4'].values.astype(float)
 
     Eb[Eb < 0] = 0
-    return Eb/A
+    return Eb/A * 1000
 
 def apply_to_df_col(column):
     def wrapper(fn):
@@ -418,8 +418,7 @@ def prepare_nuclear_data(config: argparse.Namespace, recreate: bool = False):
     for key in targets.keys():
       if "binding" in key:
         idx = [i for i,x in enumerate(output_map.keys()) if "binding" in x][0]
-        nth_output = sum(list(output_map.values())[:idx])
-        targets[key][test_mask.numpy()[:,nth_output] & except_binding] = np.nan
+        targets[key][test_mask.numpy()[:,idx] & except_binding] = np.nan
 
     return Data(
         X.to(config.DEV),

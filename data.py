@@ -239,7 +239,7 @@ def get_targets(df):
     # binding energy per nucleon minus semi empirical mass formula (including shell effects)
     targets["binding_BW2"] = targets.binding - BW2_mass_formula(df.z, df.n)
     # binding energy per nucleon minus WS4 formula
-    targets["binding_WS4"] = targets.binding - WS4_mass_formula(df)
+    # targets["binding_WS4"] = targets.binding - WS4_mass_formula(df)
     # radius in fm
     targets["radius"] = get_radius_from(df)
     # half life in log10(sec)

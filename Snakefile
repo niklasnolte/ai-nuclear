@@ -36,7 +36,7 @@ rule train_FULL:
     model = Locations.FULL_model
   resources:
     slurm_extra=run_config.get_slurm_extra_resources(),
-    runtime="1h"
+    runtime="48h"
   run:
     shell(f"mkdir -p {output.cps}")
     cmd = run_config.train_cmd(config.Task.FULL, wildcards)

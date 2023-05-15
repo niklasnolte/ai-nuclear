@@ -23,9 +23,9 @@ if args.WANDB:
         project=f"ai-nuclear",
         entity="iaifi",
         name=name,
-        notes="debugging tech debt payments",
-        tags=["task-emb", "semf", "cosine", "minmax", "test-scaling", "seed-check"],
-        group="task-emb-semf",
+        notes="debugging cross validating",
+        tags=["debug"],
+        group="cross-val",
         config=vars(args),
     )
     wandb.save("train.py")

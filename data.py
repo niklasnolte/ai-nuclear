@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+import math
 import urllib.request
 import os
 from sklearn.preprocessing import (
@@ -25,7 +26,7 @@ def delta(Z, N):
 
 
 def shell(Z, N):
-    #calculates the shell effects according to "Mutual influence of terms in a semi-empirical" Kirson
+    # calculates the shell effects according to "Mutual influence of terms in a semi-empirical" Kirson
     warnings.filterwarnings("ignore", category=RuntimeWarning)
     alpham = -1.9
     betam = 0.14
@@ -33,11 +34,12 @@ def shell(Z, N):
 
     def find_nearest(lst, target):
         return min(lst, key=lambda x: abs(x - target))
+
     nup = np.array([abs(x - find_nearest(magic, x)) for x in Z])
     nun = np.array([abs(x - find_nearest(magic, x)) for x in N])
-    P = nup*nun/(nup+nun)
+    P = nup * nun / (nup + nun)
     P[np.isnan(P)] = 0
-    return alpham*P + betam*P**2
+    return alpham * P + betam * P**2
 
 
 def semi_empirical_mass_formula(Z, N):
@@ -56,8 +58,9 @@ def semi_empirical_mass_formula(Z, N):
     Eb[Eb < 0] = 0
     return Eb / A * 1000  # keV
 
+
 def BW2_mass_formula(Z, N):
-    A = N+Z
+    A = N + Z
 
     aV = 16.58
     aS = -26.95
@@ -68,45 +71,56 @@ def BW2_mass_formula(Z, N):
     ast = 55.62
     aR = 14.77
 
-    Eb = aV*A + aS*A**(2/3) + aC*Z**2/(A**(1/3)) + \
-        aA*(N-Z)**2/A + delta(Z, N) + shell(Z, N) + aR*A**(1/3) + axC*Z**(4/3)/A**(1/3) + \
-        aW*abs(N-Z)/A + ast*(N-Z)**2/A**(4/3)
+    Eb = (
+        aV * A
+        + aS * A ** (2 / 3)
+        + aC * Z**2 / (A ** (1 / 3))
+        + aA * (N - Z) ** 2 / A
+        + delta(Z, N)
+        + shell(Z, N)
+        + aR * A ** (1 / 3)
+        + axC * Z ** (4 / 3) / A ** (1 / 3)
+        + aW * abs(N - Z) / A
+        + ast * (N - Z) ** 2 / A ** (4 / 3)
+    )
 
     Eb[Eb < 0] = 0
     return Eb / A * 1000  # keV
 
-def WS4_mass_formula(df):
 
+def WS4_mass_formula(df):
     N = df["n"].values
     Z = df["z"].values
-    A = N+Z
+    A = N + Z
     Da = 931.494102
     mp = 938.78307
     mn = 939.56542
 
-
-    file_path = os.path.join(os.path.dirname(__file__), 'data', 'WS4.txt')
+    file_path = os.path.join(os.path.dirname(__file__), "data", "WS4.txt")
 
     df_WS4 = pd.read_fwf(file_path, widths=[9, 9, 15, 15])
 
-    df_WS4['Z'] = df_WS4['Z'].astype(float)
-    df_WS4['N'] = df_WS4['A'].astype(float) - df_WS4['Z']
+    df_WS4["Z"] = df_WS4["Z"].astype(float)
+    df_WS4["N"] = df_WS4["A"].astype(float) - df_WS4["Z"]
 
     # Merge the two dataframes based on 'Z' and 'N'
-    merged_df = pd.merge(df, df_WS4, how='left', left_on=['z', 'n'], right_on=['Z', 'N'])
+    merged_df = pd.merge(
+        df, df_WS4, how="left", left_on=["z", "n"], right_on=["Z", "N"]
+    )
 
-    merged_df['WS4'] = Z*mp + N*mn - merged_df['WS4'].astype(float) - A*Da
+    merged_df["WS4"] = Z * mp + N * mn - merged_df["WS4"].astype(float) - A * Da
 
     # Create a new column 'WS4' in the merged dataframe and fill it with values from 'WS4' column in df_WS4
-    merged_df['WS4'] = merged_df['WS4'].fillna(0)
+    merged_df["WS4"] = merged_df["WS4"].fillna(0)
 
     # Drop unnecessary columns from the merged dataframe
-    merged_df = merged_df.drop(['A', 'Z', 'N', 'WS4+RBF'], axis=1)
+    merged_df = merged_df.drop(["A", "Z", "N", "WS4+RBF"], axis=1)
 
-    Eb = merged_df['WS4'].values.astype(float)
+    Eb = merged_df["WS4"].values.astype(float)
 
     Eb[Eb < 0] = 0
     return Eb / A * 1000  # keV
+
 
 def apply_to_df_col(column):
     def wrapper(fn):
@@ -302,12 +316,7 @@ def get_nuclear_data(recreate=False):
     df.reset_index(inplace=True)
     df = df[(df.z > 8) & (df.n > 8)]
 
-    zn2016 = pd.read_csv("data/2016.csv").set_index(["z","n"])
-    zn2020 = pd.read_csv("data/2020.csv").set_index(["z","n"])
-    not_in_2016 = zn2020[~zn2020.index.isin(zn2016.index)].index
-    test_idx = df.set_index(["z","n"]).index.isin(not_in_2016)
-
-    return df, test_idx
+    return df
 
 
 Data = namedtuple(
@@ -318,9 +327,8 @@ Data = namedtuple(
         "vocab_size",
         "output_map",
         "regression_transformer",
-        "train_mask",
-        "val_mask",
-        "hold_out_mask",
+        "fold_idxs",
+        "test_include_mask",
         "scaled_idxs",
     ],
 )
@@ -352,7 +360,18 @@ def _train_test_split(size, train_frac, seed=1):
     return train_mask, ~train_mask
 
 
-def prepare_nuclear_data(config: argparse.Namespace, recreate: bool = False):
+def _k_fold_cv(size, k, seed=1):
+    torch.manual_seed(seed)
+    fold_size = math.ceil(size / k)
+    idxs = torch.arange(k).repeat_interleave(fold_size)[:size]
+    # shuffle the idxs
+    idxs = idxs[torch.randperm(size)]
+    return idxs
+
+
+def prepare_nuclear_data(
+    config: argparse.Namespace, recreate: bool = False, current_fold: int = 0
+):
     """Prepare data to be used for training. Transforms data to tensors, gets tokens X,targets y,
     vocab size and output map which is a dict of {target:output_shape}. Usually output_shape is 1 for regression
     and n_classes for classification.
@@ -362,8 +381,7 @@ def prepare_nuclear_data(config: argparse.Namespace, recreate: bool = False):
         recreate (bool, optional): Force re-download of data and save to csv. Defaults to False.
     returns (Data): namedtuple of X, y, vocab_size, output_map, quantile_transformer
     """
-    df, hold_out_idx = get_nuclear_data(recreate=recreate)
-    hold_out_X = torch.tensor(df[hold_out_idx][["z","n"]].values)
+    df = get_nuclear_data(recreate=recreate)
     targets = get_targets(df)
 
     X = torch.tensor(targets[["z", "n"]].values)
@@ -396,7 +414,6 @@ def prepare_nuclear_data(config: argparse.Namespace, recreate: bool = False):
             targets[reg_columns].values
         )
 
-
     y = torch.tensor(targets[list(output_map.keys())].values).float()
 
     # Time to flatten everything
@@ -404,26 +421,27 @@ def prepare_nuclear_data(config: argparse.Namespace, recreate: bool = False):
         [torch.tensor([*x, task]) for x in X for task in torch.arange(len(output_map))]
     )
     y = y.flatten().view(-1, 1)
-    train_mask, test_mask = _train_test_split(
-        len(y), config.TRAIN_FRAC, seed=config.SEED
-    )
+    k_fold_cv_idx = _k_fold_cv(len(y), config.N_FOLDS, seed=config.SEED)
 
-    hold_out_mask = (X[:,:2].unsqueeze(1) == hold_out_X).all(-1).any(-1)
-    train_mask = train_mask & ~hold_out_mask
-    test_mask = test_mask & ~hold_out_mask
+    test_mask = k_fold_cv_idx
+
+    # scale those by A
+    binding_idxs = [i for i, x in enumerate(output_map.keys()) if "binding" in x]
+    scaled_idxs = [sum(list(output_map.values())[:idx]) for idx in binding_idxs]
 
     # don't consider nuclei with high uncertainty in binding energy
     # but only for validation
     if config.TMS == "remove":
-        except_binding = (df.binding_unc * (df.z + df.n) > 100).values
-        test_mask[::len(output_map)] = test_mask.view(-1)[::len(output_map)] & ~except_binding
+        good_binding_unc = torch.tensor((df.binding_unc * (df.z + df.n) < 100).values)
+        test_include_mask = torch.ones_like(k_fold_cv_idx, dtype=torch.bool)
+        for idx in binding_idxs:
+            test_include_mask[idx :: len(output_map)] = good_binding_unc
+            # TODO check that this works right
     elif config.TMS != "keep":
         raise ValueError(f"Unknown TMS {config.TMS}")
 
-    # scale those by A
-    binding_idxs = [i for i,x in enumerate(output_map.keys()) if "binding" in x]
-    scaled_idxs = [sum(list(output_map.values())[:idx]) for idx in binding_idxs]
-
+    if test_mask.sum() == 0:
+        raise ValueError("No test data!")
 
     return Data(
         X.to(config.DEV),
@@ -431,10 +449,9 @@ def prepare_nuclear_data(config: argparse.Namespace, recreate: bool = False):
         vocab_size,
         output_map,
         feature_transformer,
-        train_mask.to(config.DEV),
-        test_mask.to(config.DEV),
-        hold_out_mask.to(config.DEV),
-        scaled_idxs
+        k_fold_cv_idx.to(config.DEV),
+        test_include_mask.bool().to(config.DEV),
+        scaled_idxs,
     )
 
 
@@ -478,5 +495,5 @@ def prepare_modular_data(args: argparse.Namespace):
         feature_transformer,
         train_mask.to(args.DEV),
         test_mask.to(args.DEV),
-        None
+        None,
     )

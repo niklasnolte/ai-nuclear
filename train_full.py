@@ -90,7 +90,11 @@ class Trainer:
             for fold in range(self.args.N_FOLDS):
                 for x, y in self.loader.with_fold(fold):
                     self.train_step(x, y, fold)
-            if epoch % self.args.LOG_FREQ == 0:
+            if (
+                epoch % self.args.LOG_FREQ == 0
+                or epoch == self.args.EPOCHS - 1
+                or epoch & (epoch - 1) == 0
+            ):
                 self.val_step(epoch, log=True)
 
     def train_step(self, X, y, fold):
@@ -141,7 +145,6 @@ class Trainer:
             var = sum([(m[k] - mean) ** 2 for m in metrics_dicts]) / (len(coll) - 1)
             metrics_dict[f"{k}_mean"] = mean
             metrics_dict[f"{k}_std"] = math.sqrt(var)
-
 
         if log:
             self.logger.log(metrics_dict, epoch)

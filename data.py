@@ -421,9 +421,8 @@ def prepare_nuclear_data(
         [torch.tensor([*x, task]) for x in X for task in torch.arange(len(output_map))]
     )
     y = y.flatten().view(-1, 1)
-    k_fold_cv_idx = _k_fold_cv(len(y), config.N_FOLDS, seed=config.SEED)
 
-    test_mask = k_fold_cv_idx
+    k_fold_cv_idx = _k_fold_cv(len(y), config.N_FOLDS, seed=config.SEED)
 
     # scale those by A
     binding_idxs = [i for i, x in enumerate(output_map.keys()) if "binding" in x]
@@ -447,9 +446,6 @@ def prepare_nuclear_data(
 
     elif config.TMS != "keep":
         raise ValueError(f"Unknown TMS {config.TMS}")
-
-    if test_mask.sum() == 0:
-        raise ValueError("No test data!")
 
     return Data(
         X.to(config.DEV),

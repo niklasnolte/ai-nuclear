@@ -22,9 +22,9 @@ class TrainLoader:
     def __init__(self, X, y, fold_idxs, batch_size=1024):
         self.X = X
         self.y = y
-        self.fold_idxs = fold_idxs
         self.batch_size = batch_size
         self.randperm = torch.randperm(len(X), device=X.device)
+        self.fold_idxs = fold_idxs[self.randperm]
         self.with_fold(0)
 
     def __iter__(self):
@@ -115,13 +115,12 @@ class Trainer:
 
     def val_step(self, epoch, log=False):
         # This serves as the logging step as well
-        X, y = self.data.X, self.data.y
         task = self.all_tasks
         metrics_dicts = []
         for fold, model in enumerate(self.models):
             model.eval()
             with torch.no_grad():
-                out = model(X)
+                out = model(self.data.X)
                 out_ = self._unscale_output(out.clone())  # reg_targets are rescaled
                 y_ = self.unscaled_y
                 metrics_dict = {}
@@ -130,7 +129,7 @@ class Trainer:
                 masks = {"train": train_mask, "val": val_mask}
                 for name, mask in masks.items():
                     losses, num_samples = self.loss_by_task(
-                        task[mask], out[mask], y[mask]
+                        task[mask], out[mask], self.data.y[mask]
                     )
                     metrics, _ = self.metrics_by_task(task[mask], out_[mask], y_[mask])
                     m = self.construct_metrics(losses, metrics, num_samples, name)

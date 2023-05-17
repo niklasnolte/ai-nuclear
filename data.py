@@ -432,11 +432,19 @@ def prepare_nuclear_data(
     # don't consider nuclei with high uncertainty in binding energy
     # but only for validation
     if config.TMS == "remove":
+        # only consider (for testing) nuclei with binding energy uncertainty < 100 keV
         good_binding_unc = torch.tensor((df.binding_unc * (df.z + df.n) < 100).values)
+        # for radius, only consider nuclei with uncertainty < .005 fm
+        good_radius_unc = torch.tensor((df.unc_r < 0.005).values)
+        radius_idxs = [i for i, x in enumerate(output_map.keys()) if "radius" in x]
+
         test_include_mask = torch.ones_like(k_fold_cv_idx, dtype=torch.bool)
         for idx in binding_idxs:
             test_include_mask[idx :: len(output_map)] = good_binding_unc
+        for idx in radius_idxs:
+            test_include_mask[idx :: len(output_map)] = good_radius_unc
             # TODO check that this works right
+
     elif config.TMS != "keep":
         raise ValueError(f"Unknown TMS {config.TMS}")
 

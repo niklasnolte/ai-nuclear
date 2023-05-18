@@ -34,6 +34,25 @@ for fold, model in enumerate(trainer.models):
   set_base_shapes(model, shapes, rescale_params=False, do_assert=False)
 
 # %%
+# eval the model performance
+metrics = trainer.val_step(0, False)
+print(metrics)
+
+# %%
+[m.eval() for m in trainer.models]
+outs = [trainer._unscale_output(m(data.X).detach().clone()) for m in trainer.models]
+out_val = torch.zeros_like(outs[0])
+out_train = torch.zeros_like(outs[0])
+for fold, model in enumerate(trainer.models):
+    val_mask = data.fold_idxs == fold
+    out_val[val_mask] = outs[fold][val_mask]
+
+    train_mask = data.fold_idxs != fold
+    out_train[train_mask] += outs[fold][train_mask]
+
+out_train /= len(trainer.models) - 1 # for each data points there are n-1 / n preds
+
+# %%
 def plot_pca(fold=0):
     n_components = 4
     pca = PCA(n_components=n_components)
@@ -95,35 +114,41 @@ def plot_repr(fold=0, which=0):
     plt.ylabel("PCA 2")
     plt.show()
 plot_repr(3,0)
-# %%
-[m.eval() for m in trainer.models]
-outs = [trainer._unscale_output(m(data.X).detach().clone()) for m in trainer.models]
-out_val = torch.zeros_like(outs[0])
-out_train = torch.zeros_like(outs[0])
-for fold, model in enumerate(trainer.models):
-    val_mask = data.fold_idxs == fold
-    out_val[val_mask] = outs[fold][val_mask]
-
-    train_mask = data.fold_idxs != fold
-    out_train[train_mask] += outs[fold][train_mask]
-
-out_train /= len(trainer.models) - 1 # for each data points there are n-1 / n preds
 
 # %%
-N = len(data.X)//len(data.output_map)
-target_idx = 0
-target_name = list(data.output_map.keys())[target_idx]
+def plot_be_comparison_1d(preds):
+  target_idx = 0
+  target_name = list(data.output_map.keys())[target_idx]
 
-target_mask = (data.X[:, -1] == target_idx) & (~data.y.isnan().view(-1))
-pred_be = out_val[target_mask,  target_idx].detach().cpu()
-true_be = trainer.unscaled_y.view(-1)[target_mask].detach().cpu()
-plt.title(target_name)
-plt.hist(pred_be, bins=20, alpha=0.5, label="pred")
-plt.hist(true_be, bins=20, alpha=0.5, label="true")
-plt.legend()
-plt.show()
+  target_mask = (data.X[:, -1] == target_idx) & (~data.y.isnan().view(-1))
+  pred_be = preds[target_mask, target_idx].detach().cpu()
+  true_be = trainer.unscaled_y.view(-1)[target_mask].detach().cpu()
+  plt.title(target_name)
+  plt.hist(pred_be, bins=20, alpha=0.5, label="pred")
+  plt.hist(true_be, bins=20, alpha=0.5, label="true")
+  plt.legend()
+  plt.show()
+
+plot_be_comparison_1d(out_val)
+
 # %%
-metrics = trainer.val_step(0, log=False)
-metrics
+def plot_be_heatmap(preds):
+    target_name = "binding_semf"
+    target_idx = list(data.output_map.keys()).index(target_name)
+    target_mask = (data.X[:, -1] == target_idx) & (~data.y.isnan().view(-1))
+    pred_target = preds[target_mask, target_idx].detach().cpu()
+    true_target = trainer.unscaled_y.view(-1)[target_mask].detach().cpu()
+    plt.title(target_name)
+    # # heat map of difference as function of z and n
+    z, n = data.X[target_mask, 0].detach().cpu(), data.X[target_mask, 1].detach().cpu()
+    plt.scatter(z, n, c = pred_target - true_target, s = 1.5, marker="s", cmap="bwr")
+    plt.colorbar()
+    clim = max(abs(pred_target - true_target)) * .8
+    plt.clim(-clim, clim)
+    # plt.hist2d(pred_target, true_target, bins=20)
+    # plt.xlabel("pred")
+    # plt.ylabel("true")
+    # plt.show()
 
+plot_be_heatmap(out_val)
 # %%

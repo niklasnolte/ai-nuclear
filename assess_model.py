@@ -152,3 +152,25 @@ def plot_be_heatmap(preds):
 
 plot_be_heatmap(out_val)
 # %%
+
+def plot_radius_values_heatmap(preds):
+    target_name = "radius"
+    target_idx = list(data.output_map.keys()).index(target_name)
+    target_mask = (data.X[:, -1] == target_idx)
+    pred_target = preds[target_mask, target_idx].detach().cpu()
+    true_target = trainer.unscaled_y.view(-1)[target_mask].detach().cpu()
+    # 2 figures next to each other
+    plt.figure(figsize=(15, 5))
+    plt.subplot(1, 2, 1)
+    plt.title(target_name + " val preds")
+    z, n = data.X[target_mask, 0].detach().cpu(), data.X[target_mask, 1].detach().cpu()
+    plt.scatter(z, n, c = pred_target, s = 1.5, marker="s", cmap="bwr")
+    plt.colorbar()
+    plt.subplot(1, 2, 2)
+    plt.title(target_name + " truth")
+    # plot the true values
+    plt.scatter(z, n, c = true_target, s = 1.5, marker="s", cmap="bwr")
+    plt.colorbar()
+
+
+plot_radius_values_heatmap(out_val)

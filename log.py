@@ -34,10 +34,10 @@ class Logger:
                 for target, value in metrics.items():
                     if "val" in target:
                         wandb.run.summary[f"best_{target}"] = value
-            (
-                torch.save(bm, os.path.join(self.basedir, f"model_best_{fold}.pt"))
+            [
+                torch.save(bm, os.path.join(self.basedir, f"model_best.pt.{fold}"))
                 for fold, bm in enumerate(self.best_models)
-            )
+            ]
         if self.args.WANDB:
             wandb.log(metrics, step=epoch)
         else:
@@ -52,22 +52,22 @@ class Logger:
             msg += "\n".join(sorted(items, key=lambda x: x.split(" ")[0]))
             print(msg)
         if epoch == self.args.EPOCHS - 1 or epoch == 0:
-            (
+            [
                 torch.save(
-                    m.state_dict(), os.path.join(self.basedir, f"model_FULL_{fold}.pt")
+                    m.state_dict(), os.path.join(self.basedir, f"model_FULL.pt.{fold}")
                 )
                 for fold, m in enumerate(self.models)
-            )
+            ]
             print("Saved model to:")
             print(os.path.join(self.basedir))
         # implement logarithmic checkpoint frequency
         if self.args.CKPT_FREQ > 0:
             # check if epoch power of two
             if epoch & (epoch - 1) == 0:
-                (
+                [
                     torch.save(
-                        self.model.state_dict(),
-                        os.path.join(self.basedir, f"model_{fold}_{epoch}.pt"),
+                        m.state_dict(),
+                        os.path.join(self.basedir, f"model_{epoch}.pt.{fold}"),
                     )
                     for fold, m in enumerate(self.models)
-                )
+                ]

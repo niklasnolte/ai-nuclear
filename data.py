@@ -407,10 +407,13 @@ def prepare_nuclear_data(config: argparse.Namespace, recreate: bool = False):
     train_mask, test_mask = _train_test_split(
         len(y), config.TRAIN_FRAC, seed=config.SEED
     )
-
     hold_out_mask = (X[:,:2].unsqueeze(1) == hold_out_X).all(-1).any(-1)
-    train_mask = train_mask & ~hold_out_mask
-    test_mask = test_mask & ~hold_out_mask
+    if config.HOLDOUT.lower() == "true":
+        train_mask = train_mask & ~hold_out_mask
+        test_mask = test_mask & ~hold_out_mask
+    elif config.HOLDOUT.lower() == "false":
+        hold_out_mask &= False
+    else: raise ValueError(f"Unknown HOLDOUT {config.HOLDOUT}")
 
     # don't consider nuclei with high uncertainty in binding energy
     # but only for validation

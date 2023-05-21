@@ -60,6 +60,7 @@ class RNN(nn.Module):
 class Base(nn.Module):
     def __init__(
         self,
+        config,
         vocab_size: Iterable,
         non_embedded_input_dim: int,
         hidden_dim: int,
@@ -80,6 +81,14 @@ class Base(nn.Module):
                 [nn.Embedding(v, self.embedding_dim).weight for v in self.vocab_size]
             )
         self.hidden_dim = hidden_dim
+        if config.SIGMOID_READOUT.lower() == "true":
+            self._sigmoid_readout = True
+        elif config.SIGMOID_READOUT.lower() == "false":
+            self._sigmoid_readout = False
+        else:
+            raise ValueError(
+                f"Unknown value for SIGMOID_READOUT: {config.SIGMOID_READOUT}"
+            )
 
     def forward_with_embeddings(self, x, embs):
         # x = self.embed_input(x, embs)
@@ -131,6 +140,7 @@ class ResidualBlock(nn.Module):
 class BaselineModel(Base):
     def __init__(
         self,
+        config,
         vocab_size: Iterable,
         non_embedded_input_dim: int,
         hidden_dim: int,
@@ -145,7 +155,7 @@ class BaselineModel(Base):
         :param output_dim: dimension of the output layer
         """
 
-        super().__init__(vocab_size, non_embedded_input_dim, hidden_dim)
+        super().__init__(config, vocab_size, non_embedded_input_dim, hidden_dim)
         norm = direct_norm if lipschitz else (lambda x: x)
         act = nn.ReLU()
         self.nonlinear = nn.Sequential(
@@ -161,7 +171,10 @@ class BaselineModel(Base):
     def forward_with_embeddings(self, x, embs):  # embs: [ batch_size, 2 * hidden_dim ]
         x = self.embed_input(x, embs)
         x = self.nonlinear(x)  # [ batch_size, hidden_dim ]
-        return torch.sigmoid(self.readout(x))  # [ batch_size, output_dim ]
+        if self._sigmoid_readout:
+            return torch.sigmoid(self.readout(x))
+        return self.readout(x)  # [ batch_size, output_dim ]
+
 
 def get_model_fn(config):
     if config.MODEL == "baseline":
@@ -248,6 +261,7 @@ def get_model_and_optim(data: Data, config):
     model_fn = get_model_fn(config)
     model_fn = partial(
         model_fn,
+        config=config,
         vocab_size=data.vocab_size,
         non_embedded_input_dim=data.X.shape[1] - len(data.vocab_size),
         output_dim=output_dim,

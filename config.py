@@ -13,10 +13,10 @@ class Task(Enum):
             LR=[1e-2],
             EPOCHS=[50000],
             TRAIN_FRAC=[0.9],
-            HIDDEN_DIM=[256],
-            DEPTH=[2],
+            HIDDEN_DIM=[1024],
+            DEPTH=[4],
             SEED=[0],
-            BATCH_SIZE=[1024],
+            BATCH_SIZE=[4069],
             TARGETS_CLASSIFICATION=[
                 {},
                 # {"stability": 1, "parity": 1, "spin": 1, "isospin": 1},
@@ -45,7 +45,10 @@ class Task(Enum):
             ],
             SCHED = ["cosine"],
             LIPSCHITZ = ["false"],
-            TMS = ["remove"]
+            TMS = ["keep"],
+            HOLDOUT = ["false"],
+            SIGMOID_READOUT = ["false", "true"],
+            TAGS = ["rerun-from-symbols", "seed-check"],
             # CKPT = ["/home/submit/kitouni/ai-nuclear/results/FULL/model_baseline/wd_0.1/lr_0.01/epochs_10000/trainfrac_0.8/hiddendim_64/seed_0/batchsize_256/targetsclassification_None/targetsregression_binding:1-z:1-n:1-radius:1-qa:1-qbm:1-qbm_n:1-qec:1-sn:1-sp:1/model_FULL_best.pt"
             # ],
             # CKPT = ["/work/submit/kitouni/ai-nuclear/FULL/model_baseline/wd_0.1/lr_0.0001/epochs_2000/trainfrac_0.9/hiddendim_2048/depth_2/seed_0/batchsize_1024/targetsclassification_None/targetsregression_binding_semf:1-z:1-n:1-radius:1-qa:1-qbm:1-qbm_n:1-qec:1-sn:1-sp:1/sched_cosine/lipschitz_false/model_best.pt"],

@@ -1,6 +1,7 @@
 import tqdm
 import math
 import torch
+from torch.utils.data import DataLoader, TensorDataset
 from torch.optim.lr_scheduler import (
     CosineAnnealingLR,
     ReduceLROnPlateau,
@@ -48,9 +49,16 @@ class Trainer:
         self.data = (
             prepare_modular_data if problem == Task.MODULAR else prepare_nuclear_data
         )(args)
-        self.loader = Loader(
-            self.data.X[self.data.train_mask],
-            self.data.y[self.data.train_mask],
+        # self.loader = Loader(
+        #     self.data.X[self.data.train_mask],
+        #     self.data.y[self.data.train_mask],
+        #     batch_size=args.BATCH_SIZE,
+        # )
+        self.loader = DataLoader(
+            TensorDataset(
+                self.data.X[self.data.train_mask], self.data.y[self.data.train_mask]
+            ),
+            shuffle=True,
             batch_size=args.BATCH_SIZE,
         )
         # prepare model
@@ -75,11 +83,10 @@ class Trainer:
 
     def train(self):
         bar = (tqdm.trange if not self.args.WANDB else range)(self.args.EPOCHS)
-        for epoch in bar:
+        for _ in bar:
             for x, y in self.loader:
                 self.train_step(x, y)
-            if epoch % self.args.LOG_FREQ == 0:
-                self.val_step(epoch, log=True)
+            self.val_step(log=True)
 
     def train_step(self, X, y):
         self.model.train()
@@ -97,7 +104,7 @@ class Trainer:
         self.scheduler.step()
         return out, losses, num_samples
 
-    def val_step(self, epoch, log=False):
+    def val_step(self, log=False):
         # This serves as the logging step as well
         X, y = self.data.X, self.data.y
         task = self.all_tasks
@@ -107,7 +114,7 @@ class Trainer:
             out_ = self._unscale_output(out.clone())  # reg_targets are rescaled
             y_ = self.unscaled_y
             metrics_dict = {}
-            masks = {"train": self.data.train_mask, "val": self.data.val_mask, "holdout" : self.data.hold_out_mask}
+            masks = {"train": self.data.train_mask, "val": self.data.val_mask}
             for name, mask in masks.items():
                 losses, num_samples = self.loss_by_task(task[mask], out[mask], y[mask])
                 metrics, _ = self.metrics_by_task(task[mask], out_[mask], y_[mask])
@@ -115,7 +122,7 @@ class Trainer:
                 metrics_dict.update(m)
 
         if log:
-            self.logger.log(metrics_dict, epoch)
+            self.logger.log(metrics_dict)
         return metrics_dict
 
     def construct_metrics(self, losses, metrics, num_samples, prefix):

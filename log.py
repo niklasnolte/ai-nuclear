@@ -6,11 +6,11 @@ import yaml
 class Logger:
     def __init__(self, args, model ):
         self.args = args
-        # save args
+        self.epoch = 0
         self.model = model
         # FIXME: this is a hack to avoid logging outside train.py
         if hasattr(args, "basedir"):
-            self.basedir = args.basedir
+            self.basedir = args.basedir 
             with open(os.path.join(args.basedir, "args.yaml"), "w") as f:
                 yaml.dump(vars(args), f)
             if args.WANDB:
@@ -20,8 +20,9 @@ class Logger:
             self.basedir = None
         self.best_loss = float("inf")
 
-    def log(self, metrics, epoch):
+    def log(self, metrics, epoch=None):
         if self.basedir is None: return -1
+        epoch = epoch if epoch is not None else self.epoch
         val_loss = metrics["val_loss_all"]
         # keep track of the best model
         if val_loss < self.best_loss:
@@ -44,16 +45,18 @@ class Logger:
                 if "train" in k
             ]
             val_items = [f"{v:<8.2e}" for k, v in metrics.items() if "val" in k]
-            hold_out_items = [f"{v:<8.2e}" for k, v in metrics.items() if "holdout" in k]
-            items = [" | ".join(x) for x in zip(train_items, val_items, hold_out_items)]
-            msg = f"Epoch {epoch:<14} | {'Train':^8} | {'Val':^8} | {'holdout':^8}\n"
+            # hold_out_items = [f"{v:<8.2e}" for k, v in metrics.items() if "holdout" in k]
+            # items = [" | ".join(x) for x in zip(train_items, val_items, hold_out_items)]
+            # msg = f"Epoch {epoch:<14} | {'Train':^8} | {'Val':^8} | {'holdout':^8}\n"
+            items = [" | ".join(x) for x in zip(train_items, val_items)]
+            msg = f"Epoch {epoch:<14} | {'Train':^8} | {'Val':^8}\n"
             msg += "\n".join(sorted(items, key=lambda x: x.split(" ")[0]))
             print(msg)
         if epoch == self.args.EPOCHS - 1 or epoch == 0:
             state_dict_path = os.path.join(self.basedir, f"model_FULL.pt")
             torch.save(self.model.state_dict(), state_dict_path)
             print("Saved model to:")
-            print(os.path.join(self.basedir))
+            print(state_dict_path)
         # implement logarithmic checkpoint frequency
         if self.args.CKPT_FREQ > 0:
             # check if epoch power of two
@@ -62,3 +65,4 @@ class Logger:
                     self.model.state_dict(),
                     os.path.join(self.basedir, f"model_{epoch}.pt"),
                 )
+        self.epoch += 1

@@ -1,0 +1,47 @@
+import os
+import config_utils
+import config
+import run_config
+import numpy
+import snakemake
+
+
+class Locations:
+  FULL = os.path.join(run_config.SM_ROOT, config_utils.get_name(config.Task.FULL))
+  FULL_model = os.path.join(FULL, f"model_FULL.pt")
+  BASE = os.path.join(run_config.SM_ROOT, config_utils.get_name(config.Task.BASE))
+  BASE_model = os.path.join(BASE, f"model_FULL.pt")
+
+rule all:
+  input:
+      expand(Locations.FULL_model,
+              **config.Task.FULL.value)
+rule base:
+  input:
+      expand(Locations.BASE_model,
+              **config.Task.BASE.value)
+ 
+rule train_FULL:
+  output:
+    cps = directory(Locations.FULL),
+    model = Locations.FULL_model
+  resources:
+    slurm_extra=run_config.get_slurm_extra_resources(),
+    runtime="1h"
+  run:
+    shell(f"mkdir -p {output.cps}")
+    cmd = run_config.train_cmd(config.Task.FULL, wildcards)
+    shell(cmd)
+
+rule train_BASE:
+  output:
+    cps = directory(Locations.BASE),
+    model = Locations.BASE_model
+  resources:
+    slurm_extra=run_config.get_slurm_extra_resources(),
+    runtime="1h"
+  run:
+    shell(f"mkdir -p {output.cps}")
+    cmd = run_config.train_cmd(config.Task.BASE, wildcards)
+    shell(cmd)
+

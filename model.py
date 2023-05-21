@@ -18,6 +18,7 @@ class RNN(nn.Module):
         hidden_dim: int,
         output_dim: int,
         depth: int = 2,
+        dropout: float = 0.0,
         lipschitz: bool = False,
     ):
         super().__init__()
@@ -30,9 +31,9 @@ class RNN(nn.Module):
         self.task_emb = nn.Parameter(self.task_emb)
 
         self.protonet = nn.Sequential(
-            *[ResidualBlock(hidden_dim, activation=nn.SiLU()) for _ in range(depth)])
+            *[ResidualBlock(hidden_dim, activation=nn.SiLU(), dropout=dropout) for _ in range(depth)])
         self.neutronet = nn.Sequential(
-            *[ResidualBlock(hidden_dim, activation=nn.SiLU()) for _ in range(depth)])
+            *[ResidualBlock(hidden_dim, activation=nn.SiLU(), dropout=dropout) for _ in range(depth)])
         self.nonlinear = nn.Sequential(
             nn.Linear(hidden_dim * 2, hidden_dim),
             nn.SiLU(),
@@ -42,12 +43,12 @@ class RNN(nn.Module):
 
     def _protons(self, n):
         p = self.proton_emb
-        return torch.vstack([(p:=self.protonet(p)) for _ in range(n+1)]) 
-              
+        return torch.vstack([(p:=self.protonet(p)) for _ in range(n+1)])
+
     def _neutrons(self, n):
         p = self.neutron_emb
-        return torch.vstack([(p:=self.neutronet(p)) for _ in range(n+1)]) 
-              
+        return torch.vstack([(p:=self.neutronet(p)) for _ in range(n+1)])
+
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         p_max, n_max = x[:, 0].amax(), x[:, 1].amax()
         protons = self._protons(p_max)[x[:, 0]]
@@ -56,7 +57,7 @@ class RNN(nn.Module):
         # out = self.nonlinear(out)
         return torch.sigmoid(self.readout(out))
 
-   
+
 class Base(nn.Module):
     def __init__(
         self,
@@ -136,6 +137,7 @@ class BaselineModel(Base):
         hidden_dim: int,
         output_dim: int,
         depth: int = 2,
+        dropout: float = 0.0,
         lipschitz: bool = False,
     ):
         """
@@ -152,7 +154,7 @@ class BaselineModel(Base):
             nn.Linear(self.input_dim, hidden_dim),
             nn.SiLU(),
             *[
-                ResidualBlock(hidden_dim, norm=norm, activation=act)
+                ResidualBlock(hidden_dim, norm=norm, activation=act, dropout=dropout)
                 for _ in range(depth)
             ],
         )
@@ -239,12 +241,7 @@ def make_mup(model_fn: Callable, shape_file=None, **scale_kwargs) -> nn.Module:
 
 
 def get_model_and_optim(data: Data, config):
-    # set up model
-    if config.MODEL == "splitup" or config.MODEL == "transformer":
-        output_dim = list(data.output_map.values())
-    else:
-        output_dim = sum(data.output_map.values())
-
+    output_dim = sum(data.output_map.values())
     model_fn = get_model_fn(config)
     model_fn = partial(
         model_fn,
@@ -252,6 +249,7 @@ def get_model_and_optim(data: Data, config):
         non_embedded_input_dim=data.X.shape[1] - len(data.vocab_size),
         output_dim=output_dim,
         depth=config.DEPTH,
+        dropout=config.DROPOUT,
         lipschitz=config.LIPSCHITZ == "true",
     )
     if hasattr(config, "basedir"):

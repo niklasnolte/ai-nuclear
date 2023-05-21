@@ -76,6 +76,8 @@ class Trainer:
             get_model_and_optim(self.data, self.args) for _ in range(self.args.N_FOLDS)
         ]
         self.models = [m for m, _ in models_and_optims]
+        if hasattr(args, "CKPT") and args.CKPT:
+            [m.load_state_dict(torch.load(args.CKPT+".i")) for i,m in enumerate(self.models)]
         self.optimizers = [o for _, o in models_and_optims]
         self.schedulers = [self._get_scheduler(self.args, o) for o in self.optimizers]
         # prepare logger
@@ -251,7 +253,7 @@ class Trainer:
             return NoScheduler()
         max_steps = args.EPOCHS * len(self.loader)
         if args.SCHED == "cosine":
-            return CosineAnnealingLR(optimizer, max_steps, 1e-5)
+            return CosineAnnealingLR(optimizer, max_steps, args.FINAL_LR)
         elif args.SCHED == "onecycle":
             return OneCycleLR(optimizer, 1e-3, max_steps)
         elif args.SCHED == "linear":

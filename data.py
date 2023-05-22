@@ -1,6 +1,5 @@
 import numpy as np
 import pandas as pd
-import math
 import urllib.request
 import os
 from sklearn.preprocessing import (
@@ -12,7 +11,6 @@ from sklearn.preprocessing import (
 import torch
 import argparse
 from collections import namedtuple, OrderedDict
-import warnings
 
 
 def delta(Z, N):
@@ -23,23 +21,6 @@ def delta(Z, N):
     delta[(Z % 2 == 0) & (N % 2 == 1)] = 0
     delta[(Z % 2 == 1) & (N % 2 == 0)] = 0
     return delta
-
-
-def shell(Z, N):
-    # calculates the shell effects according to "Mutual influence of terms in a semi-empirical" Kirson
-    warnings.filterwarnings("ignore", category=RuntimeWarning)
-    alpham = -1.9
-    betam = 0.14
-    magic = [2, 8, 20, 28, 50, 82, 126, 184]
-
-    def find_nearest(lst, target):
-        return min(lst, key=lambda x: abs(x - target))
-
-    nup = np.array([abs(x - find_nearest(magic, x)) for x in Z])
-    nun = np.array([abs(x - find_nearest(magic, x)) for x in N])
-    P = nup * nun / (nup + nun)
-    P[np.isnan(P)] = 0
-    return alpham * P + betam * P**2
 
 
 def semi_empirical_mass_formula(Z, N):
@@ -55,69 +36,6 @@ def semi_empirical_mass_formula(Z, N):
         - aA * (N - Z) ** 2 / A
         + delta(Z, N)
     )
-    Eb[Eb < 0] = 0
-    return Eb / A * 1000  # keV
-
-
-def BW2_mass_formula(Z, N):
-    A = N + Z
-
-    aV = 16.58
-    aS = -26.95
-    aC = -0.774
-    aA = -31.51
-    axC = 2.22
-    aW = -43.4
-    ast = 55.62
-    aR = 14.77
-
-    Eb = (
-        aV * A
-        + aS * A ** (2 / 3)
-        + aC * Z**2 / (A ** (1 / 3))
-        + aA * (N - Z) ** 2 / A
-        + delta(Z, N)
-        + shell(Z, N)
-        + aR * A ** (1 / 3)
-        + axC * Z ** (4 / 3) / A ** (1 / 3)
-        + aW * abs(N - Z) / A
-        + ast * (N - Z) ** 2 / A ** (4 / 3)
-    )
-
-    Eb[Eb < 0] = 0
-    return Eb / A * 1000  # keV
-
-
-def WS4_mass_formula(df):
-    N = df["n"].values
-    Z = df["z"].values
-    A = N + Z
-    Da = 931.494102
-    mp = 938.78307
-    mn = 939.56542
-
-    file_path = os.path.join(os.path.dirname(__file__), "data", "WS4.txt")
-
-    df_WS4 = pd.read_fwf(file_path, widths=[9, 9, 15, 15])
-
-    df_WS4["Z"] = df_WS4["Z"].astype(float)
-    df_WS4["N"] = df_WS4["A"].astype(float) - df_WS4["Z"]
-
-    # Merge the two dataframes based on 'Z' and 'N'
-    merged_df = pd.merge(
-        df, df_WS4, how="left", left_on=["z", "n"], right_on=["Z", "N"]
-    )
-
-    merged_df["WS4"] = Z * mp + N * mn - merged_df["WS4"].astype(float) - A * Da
-
-    # Create a new column 'WS4' in the merged dataframe and fill it with values from 'WS4' column in df_WS4
-    merged_df["WS4"] = merged_df["WS4"].fillna(0)
-
-    # Drop unnecessary columns from the merged dataframe
-    merged_df = merged_df.drop(["A", "Z", "N", "WS4+RBF"], axis=1)
-
-    Eb = merged_df["WS4"].values.astype(float)
-
     Eb[Eb < 0] = 0
     return Eb / A * 1000  # keV
 
@@ -251,10 +169,6 @@ def get_targets(df):
     targets["binding"] = get_binding_energy_from(df)
     # binding energy per nucleon minus semi empirical mass formula
     targets["binding_semf"] = targets.binding - semi_empirical_mass_formula(df.z, df.n)
-    # binding energy per nucleon minus semi empirical mass formula (including shell effects)
-    targets["binding_BW2"] = targets.binding - BW2_mass_formula(df.z, df.n)
-    # binding energy per nucleon minus WS4 formula
-    targets["binding_WS4"] = targets.binding - WS4_mass_formula(df)
     # radius in fm
     targets["radius"] = get_radius_from(df)
     # half life in log10(sec)
@@ -307,15 +221,16 @@ def get_nuclear_data(recreate=False):
     if recreate or not os.path.exists("data/ground_states.csv"):
         df = lc_read_csv("fields=ground_states&nuclides=all")
         df.to_csv("data/ground_states.csv", index=False)
+    else:
+        # df = pd.read_csv("data/ground_states.csv")
+        df2 = pd.read_csv("data/ame2020.csv").set_index(["z", "n"])
+        df2 = df2[~df2.index.duplicated(keep="first")]
+        df = pd.read_csv("data/ground_states.csv").set_index(["z", "n"])
+        df["binding_unc"] = df2.binding_unc
+        df["binding_sys"] = df2.binding_sys
+        df.reset_index(inplace=True)
 
-    df2 = pd.read_csv("data/ame2020.csv").set_index(["z", "n"])
-    df2 = df2[~df2.index.duplicated(keep="first")]
-    df = pd.read_csv("data/ground_states.csv").set_index(["z", "n"])
-    df["binding_unc"] = df2.binding_unc
-    df["binding_sys"] = df2.binding_sys
-    df.reset_index(inplace=True)
     df = df[(df.z > 8) & (df.n > 8)]
-
     return df
 
 
@@ -327,12 +242,30 @@ Data = namedtuple(
         "vocab_size",
         "output_map",
         "regression_transformer",
-        "fold_idxs",
-        "test_include_mask",
-        "train_include_masks",
-        "scaled_idxs",
+        "train_mask",
+        "val_mask",
     ],
 )
+
+
+def _train_test_split_exact(X, train_frac, n_embedding_inputs, seed=1):
+    """
+    Take exactly train_frac of the data as training data.
+    """
+    # TODO shuffle data when using SGD
+    torch.manual_seed(seed)
+    while True:
+        train_mask = torch.ones(X.shape[0], dtype=torch.bool)
+        train_mask[int(train_frac * X.shape[0]) :] = False
+        train_mask = train_mask[torch.randperm(X.shape[0])]
+        for i in range(n_embedding_inputs):
+            if len(X[train_mask][:, i].unique()) != len(X[:, i].unique()):
+                print("resampling train mask")
+                break
+        else:
+            break
+    test_mask = ~train_mask
+    return train_mask, test_mask
 
 
 def _train_test_split_sampled(X, train_frac, n_embedding_inputs, seed=1):
@@ -361,94 +294,7 @@ def _train_test_split(size, train_frac, seed=1):
     return train_mask, ~train_mask
 
 
-def _k_fold_cv(size, k, seed=1):
-    torch.manual_seed(seed)
-    fold_size = math.ceil(size / k)
-    idxs = torch.arange(k).repeat_interleave(fold_size)[:size]
-    # shuffle the idxs
-    idxs = idxs[torch.randperm(size)]
-    return idxs
-
-
-def _leave_one_plus_four_out(X, k, output_map, test_include_mask, seed=1):
-    # we have to avoid cheating, so we need to remove from training
-    # data that is too correlated with the validation data
-    # so for each Sn, Sp target, we remove the M of all ajacent nuclei
-    # and for M, we remove the Sp and Sn of all ajacent nuclei
-    binding_idx = [i for i,x in enumerate(output_map.keys()) if "binding" in x]
-    sn_idx = [i for i,x in enumerate(output_map.keys()) if "sn" in x]
-    sp_idx = [i for i,x in enumerate(output_map.keys()) if "sp" in x]
-
-    assert len(binding_idx) == 1
-    assert len(sn_idx) == 1
-    assert len(sp_idx) == 1
-
-    binding_idx = binding_idx[0]
-    sn_idx = sn_idx[0]
-    sp_idx = sp_idx[0]
-
-    torch.manual_seed(seed)
-    total_val_set_size = k * int(0.02 * X.shape[0])  # k times 1% of the data
-    val_set_idxs = torch.randperm(X.shape[0])[:total_val_set_size]
-    val_fold_idxs = torch.repeat_interleave(torch.arange(k), total_val_set_size // k)
-
-    val_k_fold_idx = torch.zeros(X.shape[0]).long() - 1
-    val_k_fold_idx[val_set_idxs] = val_fold_idxs
-
-    train_include_masks = []  # one for each fold
-    for fold in range(k):
-        train_include_mask = torch.ones(X.shape[0], dtype=torch.bool)
-        X_val_set = X[(val_k_fold_idx == fold) & test_include_mask]
-        X_binding = X_val_set[X_val_set[:, 2] == binding_idx]
-        X_sn = X_val_set[X_val_set[:, 2] == sn_idx]
-        X_sp = X_val_set[X_val_set[:, 2] == sp_idx]
-        binding_relative_removals = torch.tensor(
-            [
-                [0, 0, sn_idx - binding_idx],
-                [0, 0, sp_idx - binding_idx],
-                [-1, 0, sn_idx - binding_idx],
-                [-1, 0, sp_idx - binding_idx],
-                [1, 0, sn_idx - binding_idx],
-                [1, 0, sp_idx - binding_idx],
-                [0, -1, sn_idx - binding_idx],
-                [0, -1, sp_idx - binding_idx],
-                [0, 1, sn_idx - binding_idx],
-                [0, 1, sp_idx - binding_idx],
-            ]
-        )
-        sn_relative_removals = torch.tensor(
-            [
-                [0, 0, binding_idx - sn_idx],
-                [-1, 0, binding_idx - sn_idx],
-                [1, 0, binding_idx - sn_idx],
-                [0, -1, binding_idx - sn_idx],
-                [0, 1, binding_idx - sn_idx],
-            ]
-        )
-        sp_relative_removals = sn_relative_removals.clone()
-        sp_relative_removals[:,2] = binding_idx - sp_idx
-
-        X_tasks = [X_binding, X_sn, X_sp]
-        relative_removals = [
-            binding_relative_removals,
-            sn_relative_removals,
-            sp_relative_removals,
-        ]
-        for X_task, removals in zip(X_tasks, relative_removals):
-            for xi in X_task:
-                  to_remove = xi + removals
-                  # remove all from X that are in to_remove
-                  mask = (X[:, None] == to_remove).all(-1).any(-1)
-                  train_include_mask[mask] = False
-        train_include_masks.append(train_include_mask)
-
-    return val_k_fold_idx, torch.stack(train_include_masks)
-
-
-
-def prepare_nuclear_data(
-    config: argparse.Namespace, recreate: bool = False, current_fold: int = 0
-):
+def prepare_nuclear_data(config: argparse.Namespace, recreate: bool = False):
     """Prepare data to be used for training. Transforms data to tensors, gets tokens X,targets y,
     vocab size and output map which is a dict of {target:output_shape}. Usually output_shape is 1 for regression
     and n_classes for classification.
@@ -491,6 +337,7 @@ def prepare_nuclear_data(
             targets[reg_columns].values
         )
 
+
     y = torch.tensor(targets[list(output_map.keys())].values).float()
 
     # Time to flatten everything
@@ -498,31 +345,17 @@ def prepare_nuclear_data(
         [torch.tensor([*x, task]) for x in X for task in torch.arange(len(output_map))]
     )
     y = y.flatten().view(-1, 1)
-
-
-    # scale those by A
-    binding_idxs = [i for i, x in enumerate(output_map.keys()) if "binding" in x]
-    scaled_idxs = [sum(list(output_map.values())[:idx]) for idx in binding_idxs]
+    train_mask, test_mask = _train_test_split(
+        len(y), config.TRAIN_FRAC, seed=config.SEED
+    )
 
     # don't consider nuclei with high uncertainty in binding energy
     # but only for validation
-    test_include_mask = torch.ones(len(y), dtype=torch.bool)
     if config.TMS == "remove":
-        # only consider (for testing) nuclei with binding energy uncertainty < 100 keV
-        good_binding_unc = torch.tensor((df.binding_unc * (df.z + df.n) < 100).values)
-        # for radius, only consider nuclei with uncertainty < .005 fm
-        good_radius_unc = torch.tensor((df.unc_r < 0.005).values)
-        radius_idxs = [i for i, x in enumerate(output_map.keys()) if "radius" in x]
-
-        for idx in binding_idxs:
-            test_include_mask[idx :: len(output_map)] = good_binding_unc
-        for idx in radius_idxs:
-            test_include_mask[idx :: len(output_map)] = good_radius_unc
-            # TODO check that this works right
+        except_binding = (df.binding_unc * (df.z + df.n) > 100).values
+        test_mask[::len(output_map)] = test_mask.view(-1)[::len(output_map)] & ~except_binding
     elif config.TMS != "keep":
         raise ValueError(f"Unknown TMS {config.TMS}")
-
-    k_fold_cv_idx, train_include_masks = _leave_one_plus_four_out(X, config.N_FOLDS, output_map, test_include_mask, seed=config.SEED)
 
     return Data(
         X.to(config.DEV),
@@ -530,10 +363,8 @@ def prepare_nuclear_data(
         vocab_size,
         output_map,
         feature_transformer,
-        k_fold_cv_idx.to(config.DEV),
-        test_include_mask.bool().to(config.DEV),
-        train_include_masks.bool().to(config.DEV),
-        scaled_idxs,
+        train_mask.to(config.DEV),
+        test_mask.to(config.DEV),
     )
 
 
@@ -577,5 +408,4 @@ def prepare_modular_data(args: argparse.Namespace):
         feature_transformer,
         train_mask.to(args.DEV),
         test_mask.to(args.DEV),
-        None,
     )

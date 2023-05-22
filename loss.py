@@ -29,7 +29,7 @@ def rmse(output: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
     masked_target = targets[mask]
     masked_output = output[mask]
     return torch.sqrt(F.mse_loss(masked_output, masked_target, reduction="none").mean())
-    
+
 def random_softmax(shape, scale=1):
     x = torch.rand(shape)
     return torch.softmax(scale * x, dim=-1) * x.shape[-1]

@@ -23,9 +23,9 @@ if args.WANDB:
         project=f"ai-nuclear",
         entity="iaifi",
         name=name,
-        notes="debugging cross validating",
-        tags=["debug"],
-        group="cross-val",
+        notes="debugging tech debt payments",
+        tags=["recreate_best_run"],
+        group="sysnml_sprint",
         config=vars(args),
     )
     wandb.save("train.py")
@@ -35,6 +35,7 @@ if args.WANDB:
     wandb.save("model.py")
     wandb.save("data.py")
     wandb.save("train_full.py")
+    wandb.save("log.py")
 
 # remove old models
 # FIXME should we really do that?

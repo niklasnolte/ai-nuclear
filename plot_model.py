@@ -1,5 +1,5 @@
 import torch
-from data import prepare_nuclear_data, prepare_modular_data
+from data import prepare_nuclear_data
 from config import Task
 import matplotlib.pyplot as plt
 from model import get_model_and_optim
@@ -12,11 +12,8 @@ TASK = Task[os.environ.get("TASK")]
 args, name = parse_arguments_and_get_name(TASK)
 torch.manual_seed(args.SEED)
 
-if TASK == Task.FULL or TASK == Task.DEBUG:
+if TASK == Task.FULL:
     data = prepare_nuclear_data(args)
-elif TASK == Task.MODULAR:
-    data = prepare_modular_data(args)
-
 print(args)
 
 def load(path):

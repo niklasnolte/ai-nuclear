@@ -43,5 +43,5 @@ if args.WANDB:
 #         os.remove(os.path.join(basedir, f))
 
 
-if TASK == Task.FULL or TASK == Task.DEBUG or TASK == Task.MODULAR:
+if TASK == Task.FULL:
     train(TASK, args)

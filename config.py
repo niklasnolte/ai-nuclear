@@ -56,67 +56,6 @@ class Task(Enum):
         )
     )
 
-    MODULAR = serialize_elements_in_task(
-        dict(
-            MODEL=["baseline"],
-            WD=[1e-1, 5e-2, 1e-1],
-            LR=[1e-1, 1e-3, 1e-1],
-            EPOCHS=[10000],
-            TRAIN_FRAC=[0.383],
-            HIDDEN_DIM=[32],
-            SEED=[0, 1, 2],
-            RANDOM_WEIGHTS=[
-                0.0,
-                0.1,
-            ],  # level of entropy in randomness. 0 is uniform. 1000 is random one hot.
-            P=[53],
-            DIMREG_COEFF=[0.0, 2.0, 1.0, 0.5],
-            DIMREG_EXP=[-1.5, -1.0],  # power to weight indices in dimn regularization
-            TARGETS_CLASSIFICATION=[
-                # {"add": 1, "subtract": 1},
-                {"add": 1},
-                {"add": 1, "subtract": 1, "multiply": 1},
-            ],
-            TARGETS_REGRESSION=[
-                {},
-            ],
-        )
-    )
-
-    DEBUG = serialize_elements_in_task(
-        dict(
-            MODEL=["baseline"],
-            WD=[1e-3],  # first one seems to be best
-            LR=[1e-2],
-            EPOCHS=[2],
-            TRAIN_FRAC=[0.8],
-            HIDDEN_DIM=[32],
-            SEED=[0],
-            RANDOM_WEIGHTS=[10],
-            DIMREG_COEFF=[0.0, 2.0],
-            DIMREG_EXP=[-1.5],  # power to weight indices in dimn regularization
-            TARGETS_CLASSIFICATION=[
-                {"stability": 1, "parity": 1, "spin": 1, "isospin": 1},
-            ],
-            TARGETS_REGRESSION=[
-                {
-                    "z": 1,
-                    "n": 1,
-                    "binding_energy": 1,
-                    "radius": 1,
-                    "half_life_sec": 1,
-                    "abundance": 1,
-                    "qa": 1,
-                    "qbm": 1,
-                    "qbm_n": 1,
-                    "qec": 1,
-                    "sn": 1,
-                    "sp": 1,
-                },
-            ],
-        )
-    )
-
 
 def get_args(task=Task.FULL):
     args = Namespace(**{k: v[0] for k, v in task.value.items()})

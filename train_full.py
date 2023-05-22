@@ -9,7 +9,7 @@ from torch.optim.lr_scheduler import (
     LinearLR,
 )
 from torch.nn import CrossEntropyLoss, MSELoss
-from data import prepare_nuclear_data, prepare_modular_data
+from data import prepare_nuclear_data
 from model import get_model_and_optim
 from loss import rmse, accuracy
 from config import Task
@@ -53,9 +53,7 @@ class Trainer:
         self.problem = problem
         self.args = args
         # prepare data
-        self.data = (
-            prepare_modular_data if problem == Task.MODULAR else prepare_nuclear_data
-        )(self.args)
+        self.data = prepare_nuclear_data(self.args)
         # prepare loss
         self.loss_fn = {
             "regression": MSELoss(reduction="sum"),

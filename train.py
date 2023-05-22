@@ -36,6 +36,7 @@ if args.WANDB:
     wandb.save("data.py")
     wandb.save("train_full.py")
     wandb.save("log.py")
+    wandb.save("run_config.py")
 
 # remove old models
 # FIXME should we really do that?

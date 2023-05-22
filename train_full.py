@@ -125,7 +125,8 @@ class Trainer:
         # This serves as the logging step as well
         task = self.all_tasks
         metrics_dicts = []
-        for fold, model in enumerate(self.models):
+        for fold in self.args.WHICH_FOLDS:
+            model = self.models[fold]
             model.eval()
             with torch.no_grad():
                 out = model(self.data.X)

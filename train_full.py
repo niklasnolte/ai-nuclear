@@ -79,7 +79,7 @@ class Trainer:
         ]
         self.models = [m for m, _ in models_and_optims]
         if hasattr(args, "CKPT") and args.CKPT:
-            [m.load_state_dict(torch.load(args.CKPT+".i")) for i,m in enumerate(self.models)]
+            [m.load_state_dict(torch.load(args.CKPT+f".{i}")) for i,m in enumerate(self.models)]
         self.optimizers = [o for _, o in models_and_optims]
         self.schedulers = [self._get_scheduler(self.args, o) for o in self.optimizers]
         # prepare logger

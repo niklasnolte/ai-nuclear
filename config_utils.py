@@ -14,7 +14,6 @@ def where_am_i():
         Warning(f"Unknown cluster: {host}")
         return "Local"
 
-
 def _serialize_dict(targets: dict) -> str:
     if targets == {}:
         return "None"
@@ -26,6 +25,11 @@ def _deserialize_dict(targets: str) -> dict:
         return {}
     return {k: float(v) for k, v in [t.split(":") for t in targets.split("-")]}
 
+def _serialize_list(targets: list) -> str:
+    return "-".join([str(t) for t in targets])
+
+def _deserialize_list(targets: str) -> list:
+    return [float(t) for t in targets.split("-")]
 
 def serialize_elements_in_task(task: dict):
     """
@@ -39,6 +43,8 @@ def serialize_elements_in_task(task: dict):
         for i, choice in enumerate(choices):
             if isinstance(choice, dict):
                 task[t][i] = _serialize_dict(choice)
+            elif isinstance(choice, list):
+                task[t][i] = _serialize_list(choice)
     return task
 
 
@@ -46,6 +52,7 @@ def _args_postprocessing(args: argparse.Namespace):
     # make them dicts again
     args.TARGETS_CLASSIFICATION = _deserialize_dict(args.TARGETS_CLASSIFICATION)
     args.TARGETS_REGRESSION = _deserialize_dict(args.TARGETS_REGRESSION)
+    args.WHICH_FOLDS = [int(x) for x in _deserialize_list(args.WHICH_FOLDS)]
 
     # log freq
     if args.CKPT_FREQ == -1:

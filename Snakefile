@@ -8,7 +8,7 @@ import snakemake
 
 class Locations:
   FULL = os.path.join(run_config.SM_ROOT, config_utils.get_name(config.Task.FULL))
-  FULL_model = os.path.join(FULL, f"model_FULL.pt")
+  FULL_model = os.path.join(FULL, f"done.txt")
   DEBUG = os.path.join(run_config.SM_ROOT, config_utils.get_name(config.Task.DEBUG))
   DEBUG_model = os.path.join(DEBUG, f"model_FULL.pt")
   MODULAR = os.path.join(run_config.SM_ROOT, config_utils.get_name(config.Task.MODULAR))

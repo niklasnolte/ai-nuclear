@@ -242,8 +242,8 @@ Data = namedtuple(
         "vocab_size",
         "output_map",
         "regression_transformer",
-        "train_mask",
-        "val_mask",
+        "train_masks",
+        "val_masks",
     ],
 )
 
@@ -286,12 +286,15 @@ def _train_test_split_sampled(X, train_frac, n_embedding_inputs, seed=1):
     return train_mask, test_mask
 
 
-def _train_test_split(size, train_frac, seed=1):
+def _train_test_split(size, n_folds, seed=1):
     torch.manual_seed(seed)
-    train_mask = torch.zeros(size, dtype=torch.bool)
-    train_mask[: int(train_frac * size)] = True
-    train_mask = train_mask[torch.randperm(size)]
-    return train_mask, ~train_mask
+    train_idx = torch.repeat_interleave(
+        torch.arange(n_folds), size // n_folds + 1
+    )[:size]
+    train_idx = train_idx[torch.randperm(size)]
+    train_masks = [train_idx != i for i in range(n_folds)]
+    val_masks = [train_idx == i for i in range(n_folds)]
+    return torch.stack(train_masks), torch.stack(val_masks)
 
 
 def prepare_nuclear_data(config: argparse.Namespace, recreate: bool = False):
@@ -345,15 +348,19 @@ def prepare_nuclear_data(config: argparse.Namespace, recreate: bool = False):
         [torch.tensor([*x, task]) for x in X for task in torch.arange(len(output_map))]
     )
     y = y.flatten().view(-1, 1)
-    train_mask, test_mask = _train_test_split(
-        len(y), config.TRAIN_FRAC, seed=config.SEED
+    train_masks, test_masks = _train_test_split(
+        len(y), config.N_FOLDS, seed=config.SEED
     )
 
     # don't consider nuclei with high uncertainty in binding energy
     # but only for validation
     if config.TMS == "remove":
+        binding_idx = list(output_map.keys()).index("binding_semf")
+        radius_idx = list(output_map.keys()).index("radius")
         except_binding = (df.binding_unc * (df.z + df.n) > 100).values
-        test_mask[::len(output_map)] = test_mask.view(-1)[::len(output_map)] & ~except_binding
+        except_radius = (df.unc_r > .005).values
+        test_masks[:, binding_idx::len(output_map)] = test_masks[:, binding_idx::len(output_map)] & ~except_binding
+        test_masks[:, radius_idx::len(output_map)] = test_masks[:, radius_idx::len(output_map)] & ~except_radius
     elif config.TMS != "keep":
         raise ValueError(f"Unknown TMS {config.TMS}")
 
@@ -363,8 +370,8 @@ def prepare_nuclear_data(config: argparse.Namespace, recreate: bool = False):
         vocab_size,
         output_map,
         feature_transformer,
-        train_mask.to(config.DEV),
-        test_mask.to(config.DEV),
+        train_masks.to(config.DEV),
+        test_masks.to(config.DEV),
     )
 
 

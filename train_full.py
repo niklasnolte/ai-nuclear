@@ -27,18 +27,26 @@ class Trainer:
         self.data = (
             prepare_modular_data if problem == Task.MODULAR else prepare_nuclear_data
         )(args)
-        self.loader = DataLoader(
-            TensorDataset(
-                self.data.X[self.data.train_mask], self.data.y[self.data.train_mask]
-            ),
-            shuffle=True,
-            batch_size=args.BATCH_SIZE,
-        )
         # prepare model
-        self.model, self.optimizer = get_model_and_optim(self.data, args)
-        if hasattr(args, "CKPT") and args.CKPT:
-            self.model.load_state_dict(torch.load(args.CKPT))
-        self.scheduler = self._get_scheduler(args)
+        ms_and_os = [get_model_and_optim(self.data, args) for _ in range(args.N_FOLDS)]
+        self.models = [m for m, _ in ms_and_os]
+        self.optimizers = [o for _, o in ms_and_os]
+        self.loaders = [
+            DataLoader(
+                TensorDataset(
+                    self.data.X[self.data.train_masks[fold]],
+                    self.data.y[self.data.train_masks[fold]],
+                ),
+                shuffle=True,
+                batch_size=args.BATCH_SIZE,
+            )
+            for fold in range(args.N_FOLDS)
+        ]
+        self.schedulers = [
+            self._get_scheduler(fold, args) for fold in range(args.N_FOLDS)
+        ]
+        # if hasattr(args, "CKPT") and args.CKPT:
+        #     self.model.load_state_dict(torch.load(args.CKPT))
         # prepare loss
         self.loss_fn = {
             "regression": MSELoss(reduction="sum"),
@@ -49,7 +57,7 @@ class Trainer:
             "classification": accuracy,
         }
         # prepare logger
-        self.logger = Logger(args, self.model)
+        self.logger = Logger(args, self.models)
 
         # misc
         self.num_tasks = len(self.data.output_map)
@@ -57,38 +65,57 @@ class Trainer:
     def train(self):
         bar = (tqdm.trange if not self.args.WANDB else range)(self.args.EPOCHS)
         for _ in bar:
-            for x, y in self.loader:
-                self.train_step(x, y)
+            for fold in self.args.WHICH_FOLDS:
+                for x, y in self.loaders[fold]:
+                    self.train_step(x, y, fold)
             self.val_step(log=True)
 
-    def train_step(self, X, y):
-        self.model.train()
-        self.optimizer.zero_grad()
-        out = self.model(X)
+    def train_step(self, X, y, fold):
+        self.models[fold].train()
+        self.optimizers[fold].zero_grad()
+        out = self.models[fold](X)
         task = X[:, len(self.data.vocab_size) - 1]
         losses, num_samples = self.loss_by_task(task, out, y)
         loss = losses.sum() / num_samples.sum()  # TODO weights?
         loss.backward()
-        self.optimizer.step()
-        self.scheduler.step()
+        self.optimizers[fold].step()
+        self.schedulers[fold].step()
         return out, losses, num_samples
 
     def val_step(self, log=False):
         # This serves as the logging step as well
         X, y = self.data.X, self.data.y
         task = self.all_tasks
-        self.model.eval()
         with torch.no_grad():
-            out = self.model(X)
-            out_ = self._unscale_output(out.clone())  # reg_targets are rescaled
-            y_ = self.unscaled_y
-            metrics_dict = {}
-            masks = {"train": self.data.train_mask, "val": self.data.val_mask}
-            for name, mask in masks.items():
-                losses, num_samples = self.loss_by_task(task[mask], out[mask], y[mask])
-                metrics, _ = self.metrics_by_task(task[mask], out_[mask], y_[mask])
-                m = self.construct_metrics(losses, metrics, num_samples, name)
-                metrics_dict.update(m)
+            metrics_dicts = []
+            for fold in self.args.WHICH_FOLDS:
+                model = self.models[fold]
+                model.eval()
+                out = model(X)
+                out_ = self._unscale_output(out.clone())  # reg_targets are rescaled
+                y_ = self.unscaled_y
+                metrics_dict = {}
+                masks = {
+                    "train": self.data.train_masks[fold],
+                    "val": self.data.val_masks[fold],
+                }
+                for name, mask in masks.items():
+                    losses, num_samples = self.loss_by_task(
+                        task[mask], out[mask], y[mask]
+                    )
+                    metrics, _ = self.metrics_by_task(task[mask], out_[mask], y_[mask])
+                    m = self.construct_metrics(losses, metrics, num_samples, name)
+                    metrics_dict.update(m)
+                metrics_dicts.append(metrics_dict)
+
+        # average over folds
+        metrics_dict = {}
+        for k in metrics_dicts[0].keys():
+            metrics_dict[k] = sum(m[k] for m in metrics_dicts) / len(metrics_dicts)
+            metrics_dict[k + "_std"] = (
+                sum((m[k] - metrics_dict[k]) ** 2 for m in metrics_dicts)
+                / len(metrics_dicts)
+            ) ** 0.5
 
         if log:
             self.logger.log(metrics_dict)
@@ -184,7 +211,7 @@ class Trainer:
         task_idx = len(self.data.vocab_size) - 1
         return self.data.X[:, task_idx]  # [N * num_tasks, 1]
 
-    def _get_scheduler(self, args):
+    def _get_scheduler(self, fold, args):
         if args.SCHED == "none":
 
             class NoScheduler:
@@ -192,13 +219,13 @@ class Trainer:
                     pass
 
             return NoScheduler()
-        max_steps = args.EPOCHS * len(self.loader)
+        max_steps = args.EPOCHS * len(self.loaders[fold])
         if args.SCHED == "cosine":
-            return CosineAnnealingLR(self.optimizer, max_steps, 1e-5)
+            return CosineAnnealingLR(self.optimizers[fold], max_steps, 1e-5)
         elif args.SCHED == "onecycle":
-            return OneCycleLR(self.optimizer, 1e-3, max_steps)
+            return OneCycleLR(self.optimizers[fold], 1e-3, max_steps)
         elif args.SCHED == "linear":
-            return LinearLR(self.optimizer, 1.0, 1e-2, max_steps)
+            return LinearLR(self.optimizers[fold], 1.0, 1e-2, max_steps)
         else:
             raise ValueError(f"Unknown scheduler {args.SCHED}")
 

@@ -148,7 +148,7 @@ class Trainer:
         for k in metrics_dicts[0]:
             coll = [m[k] for m in metrics_dicts]
             mean = sum(coll) / len(coll)
-            var = sum([(m[k] - mean) ** 2 for m in metrics_dicts]) / (len(coll) - 1)
+            var = sum([(m[k] - mean) ** 2 for m in metrics_dicts]) / (len(coll) - 1 + 1e-7)
             metrics_dict[f"{k}_mean"] = mean
             metrics_dict[f"{k}_std"] = math.sqrt(var)
 

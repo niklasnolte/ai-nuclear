@@ -329,6 +329,7 @@ Data = namedtuple(
         "regression_transformer",
         "fold_idxs",
         "test_include_mask",
+        "train_include_masks",
         "scaled_idxs",
     ],
 )
@@ -367,6 +368,82 @@ def _k_fold_cv(size, k, seed=1):
     # shuffle the idxs
     idxs = idxs[torch.randperm(size)]
     return idxs
+
+
+def _leave_one_plus_four_out(X, k, output_map, test_include_mask, seed=1):
+    # we have to avoid cheating, so we need to remove from training
+    # data that is too correlated with the validation data
+    # so for each Sn, Sp target, we remove the M of all ajacent nuclei
+    # and for M, we remove the Sp and Sn of all ajacent nuclei
+    binding_idx = [i for i,x in enumerate(output_map.keys()) if "binding" in x]
+    sn_idx = [i for i,x in enumerate(output_map.keys()) if "sn" in x]
+    sp_idx = [i for i,x in enumerate(output_map.keys()) if "sp" in x]
+
+    assert len(binding_idx) == 1
+    assert len(sn_idx) == 1
+    assert len(sp_idx) == 1
+
+    binding_idx = binding_idx[0]
+    sn_idx = sn_idx[0]
+    sp_idx = sp_idx[0]
+
+    torch.manual_seed(seed)
+    total_val_set_size = k * int(0.02 * X.shape[0])  # k times 1% of the data
+    val_set_idxs = torch.randperm(X.shape[0])[:total_val_set_size]
+    val_fold_idxs = torch.repeat_interleave(torch.arange(k), total_val_set_size // k)
+
+    val_k_fold_idx = torch.zeros(X.shape[0]).long() - 1
+    val_k_fold_idx[val_set_idxs] = val_fold_idxs
+
+    train_include_masks = []  # one for each fold
+    for fold in range(k):
+        train_include_mask = torch.ones(X.shape[0], dtype=torch.bool)
+        X_val_set = X[(val_k_fold_idx == fold) & test_include_mask]
+        X_binding = X_val_set[X_val_set[:, 2] == binding_idx]
+        X_sn = X_val_set[X_val_set[:, 2] == sn_idx]
+        X_sp = X_val_set[X_val_set[:, 2] == sp_idx]
+        binding_relative_removals = torch.tensor(
+            [
+                [0, 0, sn_idx - binding_idx],
+                [0, 0, sp_idx - binding_idx],
+                [-1, 0, sn_idx - binding_idx],
+                [-1, 0, sp_idx - binding_idx],
+                [1, 0, sn_idx - binding_idx],
+                [1, 0, sp_idx - binding_idx],
+                [0, -1, sn_idx - binding_idx],
+                [0, -1, sp_idx - binding_idx],
+                [0, 1, sn_idx - binding_idx],
+                [0, 1, sp_idx - binding_idx],
+            ]
+        )
+        sn_relative_removals = torch.tensor(
+            [
+                [0, 0, binding_idx - sn_idx],
+                [-1, 0, binding_idx - sn_idx],
+                [1, 0, binding_idx - sn_idx],
+                [0, -1, binding_idx - sn_idx],
+                [0, 1, binding_idx - sn_idx],
+            ]
+        )
+        sp_relative_removals = sn_relative_removals.clone()
+        sp_relative_removals[:,2] = binding_idx - sp_idx
+
+        X_tasks = [X_binding, X_sn, X_sp]
+        relative_removals = [
+            binding_relative_removals,
+            sn_relative_removals,
+            sp_relative_removals,
+        ]
+        for X_task, removals in zip(X_tasks, relative_removals):
+            for xi in X_task:
+                  to_remove = xi + removals
+                  # remove all from X that are in to_remove
+                  mask = (X[:, None] == to_remove).all(-1).any(-1)
+                  train_include_mask[mask] = False
+        train_include_masks.append(train_include_mask)
+
+    return val_k_fold_idx, torch.stack(train_include_masks)
+
 
 
 def prepare_nuclear_data(
@@ -422,7 +499,6 @@ def prepare_nuclear_data(
     )
     y = y.flatten().view(-1, 1)
 
-    k_fold_cv_idx = _k_fold_cv(len(y), config.N_FOLDS, seed=config.SEED)
 
     # scale those by A
     binding_idxs = [i for i, x in enumerate(output_map.keys()) if "binding" in x]
@@ -430,6 +506,7 @@ def prepare_nuclear_data(
 
     # don't consider nuclei with high uncertainty in binding energy
     # but only for validation
+    test_include_mask = torch.ones(len(y), dtype=torch.bool)
     if config.TMS == "remove":
         # only consider (for testing) nuclei with binding energy uncertainty < 100 keV
         good_binding_unc = torch.tensor((df.binding_unc * (df.z + df.n) < 100).values)
@@ -437,15 +514,15 @@ def prepare_nuclear_data(
         good_radius_unc = torch.tensor((df.unc_r < 0.005).values)
         radius_idxs = [i for i, x in enumerate(output_map.keys()) if "radius" in x]
 
-        test_include_mask = torch.ones_like(k_fold_cv_idx, dtype=torch.bool)
         for idx in binding_idxs:
             test_include_mask[idx :: len(output_map)] = good_binding_unc
         for idx in radius_idxs:
             test_include_mask[idx :: len(output_map)] = good_radius_unc
             # TODO check that this works right
-
     elif config.TMS != "keep":
         raise ValueError(f"Unknown TMS {config.TMS}")
+
+    k_fold_cv_idx, train_include_masks = _leave_one_plus_four_out(X, config.N_FOLDS, output_map, test_include_mask, seed=config.SEED)
 
     return Data(
         X.to(config.DEV),
@@ -455,6 +532,7 @@ def prepare_nuclear_data(
         feature_transformer,
         k_fold_cv_idx.to(config.DEV),
         test_include_mask.bool().to(config.DEV),
+        train_include_masks.bool().to(config.DEV),
         scaled_idxs,
     )
 

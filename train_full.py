@@ -19,12 +19,13 @@ from functools import cached_property
 
 
 class TrainLoader:
-    def __init__(self, X, y, fold_idxs, batch_size=1024):
+    def __init__(self, X, y, fold_idxs, train_include_masks, batch_size=1024):
         self.X = X
         self.y = y
         self.batch_size = batch_size
         self.randperm = torch.randperm(len(X), device=X.device)
         self.fold_idxs = fold_idxs[self.randperm]
+        self.train_include_masks = train_include_masks[:,self.randperm]
         self.with_fold(0)
 
     def __iter__(self):
@@ -33,7 +34,7 @@ class TrainLoader:
 
     def with_fold(self, fold):
         self.current_fold = fold
-        self.randperm_fold = self.randperm[self.fold_idxs != fold]
+        self.randperm_fold = self.randperm[(self.fold_idxs != fold) & self.train_include_masks[fold]]
         return self
 
     def __next__(self):
@@ -69,6 +70,7 @@ class Trainer:
             self.data.X,
             self.data.y,
             self.data.fold_idxs,
+            self.data.train_include_masks,
             batch_size=self.args.BATCH_SIZE,
         )
         # prepare model

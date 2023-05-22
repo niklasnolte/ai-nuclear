@@ -71,3 +71,8 @@ class Logger:
                     )
                     for fold in self.args.WHICH_FOLDS
                 ]
+        if epoch == self.args.EPOCHS - 1:
+            # make final file "done.txt"
+            with open(os.path.join(self.basedir, "done.txt"), "w") as f:
+                f.write("finalized")
+

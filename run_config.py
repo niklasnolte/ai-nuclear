@@ -12,7 +12,7 @@ Clusters = dict(
         "root": os.path.expanduser("~/data/AI-NUCLEAR-LOGS"),
     },
     Local = {
-        "root": "./results" ,
+        "root": "results" ,
         }
 )
 

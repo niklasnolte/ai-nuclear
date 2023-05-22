@@ -13,6 +13,7 @@ class Task(Enum):
             LR=[1e-2],
             EPOCHS=[50000],
             N_FOLDS=[20],
+            WHICH_FOLDS=[[i] for i in range(20)],
             HIDDEN_DIM=[1024],
             DEPTH=[4],
             SEED=[0],

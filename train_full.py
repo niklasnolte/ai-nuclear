@@ -78,8 +78,12 @@ class Trainer:
             get_model_and_optim(self.data, self.args) for _ in range(self.args.N_FOLDS)
         ]
         self.models = [m for m, _ in models_and_optims]
+
+        if not hasattr(args, "WHICH_FOLDS"):
+            self.args.WHICH_FOLDS = list(range(self.args.N_FOLDS))
+
         if hasattr(args, "CKPT") and args.CKPT:
-            [m.load_state_dict(torch.load(args.CKPT+f".{i}")) for i,m in enumerate(self.models)]
+            [self.models[i].load_state_dict(torch.load(args.CKPT+f".{i}")) for i in self.args.WHICH_FOLDS]
         self.optimizers = [o for _, o in models_and_optims]
         self.schedulers = [self._get_scheduler(self.args, o) for o in self.optimizers]
         # prepare logger
@@ -91,7 +95,7 @@ class Trainer:
     def train(self):
         bar = (tqdm.trange if not self.args.WANDB else range)(self.args.EPOCHS)
         for epoch in bar:
-            for fold in range(self.args.N_FOLDS):
+            for fold in self.args.WHICH_FOLDS:
                 for x, y in self.loader.with_fold(fold):
                     self.train_step(x, y, fold)
             if (

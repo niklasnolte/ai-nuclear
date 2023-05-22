@@ -35,8 +35,8 @@ class Logger:
                     if "val" in target:
                         wandb.run.summary[f"best_{target}"] = value
             [
-                torch.save(bm, os.path.join(self.basedir, f"model_best.pt.{fold}"))
-                for fold, bm in enumerate(self.best_models)
+                torch.save(self.best_models[fold], os.path.join(self.basedir, f"model_best.pt.{fold}"))
+                for fold in self.args.WHICH_FOLDS
             ]
         if self.args.WANDB:
             wandb.log(metrics, step=epoch)
@@ -54,9 +54,9 @@ class Logger:
         if epoch == self.args.EPOCHS - 1 or epoch == 0:
             [
                 torch.save(
-                    m.state_dict(), os.path.join(self.basedir, f"model_FULL.pt.{fold}")
+                    self.models[fold].state_dict(), os.path.join(self.basedir, f"model_FULL.pt.{fold}")
                 )
-                for fold, m in enumerate(self.models)
+                for fold in self.args.WHICH_FOLDS
             ]
             print("Saved model to:")
             print(os.path.join(self.basedir))
@@ -66,8 +66,8 @@ class Logger:
             if epoch & (epoch - 1) == 0:
                 [
                     torch.save(
-                        m.state_dict(),
+                        self.models[fold].state_dict(),
                         os.path.join(self.basedir, f"model_{epoch}.pt.{fold}"),
                     )
-                    for fold, m in enumerate(self.models)
+                    for fold in self.args.WHICH_FOLDS
                 ]

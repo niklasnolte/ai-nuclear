@@ -49,11 +49,6 @@ class Trainer:
         self.data = (
             prepare_modular_data if problem == Task.MODULAR else prepare_nuclear_data
         )(args)
-        # self.loader = Loader(
-        #     self.data.X[self.data.train_mask],
-        #     self.data.y[self.data.train_mask],
-        #     batch_size=args.BATCH_SIZE,
-        # )
         self.loader = DataLoader(
             TensorDataset(
                 self.data.X[self.data.train_mask], self.data.y[self.data.train_mask]

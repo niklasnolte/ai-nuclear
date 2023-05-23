@@ -2,12 +2,7 @@ import numpy as np
 import pandas as pd
 import urllib.request
 import os
-from sklearn.preprocessing import (
-    QuantileTransformer,
-    MinMaxScaler,
-    RobustScaler,
-    StandardScaler,
-)
+from sklearn.preprocessing import MinMaxScaler
 import torch
 import argparse
 from collections import namedtuple, OrderedDict
@@ -25,7 +20,7 @@ def delta(Z, N):
 
 
 def shell(Z, N):
-    #calculates the shell effects according to "Mutual influence of terms in a semi-empirical" Kirson
+    # calculates the shell effects according to "Mutual influence of terms in a semi-empirical" Kirson
     warnings.filterwarnings("ignore", category=RuntimeWarning)
     alpham = -1.9
     betam = 0.14
@@ -33,11 +28,12 @@ def shell(Z, N):
 
     def find_nearest(lst, target):
         return min(lst, key=lambda x: abs(x - target))
+
     nup = np.array([abs(x - find_nearest(magic, x)) for x in Z])
     nun = np.array([abs(x - find_nearest(magic, x)) for x in N])
-    P = nup*nun/(nup+nun)
+    P = nup * nun / (nup + nun)
     P[np.isnan(P)] = 0
-    return alpham*P + betam*P**2
+    return alpham * P + betam * P**2
 
 
 def semi_empirical_mass_formula(Z, N):
@@ -56,8 +52,9 @@ def semi_empirical_mass_formula(Z, N):
     Eb[Eb < 0] = 0
     return Eb / A * 1000  # keV
 
+
 def BW2_mass_formula(Z, N):
-    A = N+Z
+    A = N + Z
 
     aV = 16.58
     aS = -26.95
@@ -68,45 +65,56 @@ def BW2_mass_formula(Z, N):
     ast = 55.62
     aR = 14.77
 
-    Eb = aV*A + aS*A**(2/3) + aC*Z**2/(A**(1/3)) + \
-        aA*(N-Z)**2/A + delta(Z, N) + shell(Z, N) + aR*A**(1/3) + axC*Z**(4/3)/A**(1/3) + \
-        aW*abs(N-Z)/A + ast*(N-Z)**2/A**(4/3)
+    Eb = (
+        aV * A
+        + aS * A ** (2 / 3)
+        + aC * Z**2 / (A ** (1 / 3))
+        + aA * (N - Z) ** 2 / A
+        + delta(Z, N)
+        + shell(Z, N)
+        + aR * A ** (1 / 3)
+        + axC * Z ** (4 / 3) / A ** (1 / 3)
+        + aW * abs(N - Z) / A
+        + ast * (N - Z) ** 2 / A ** (4 / 3)
+    )
 
     Eb[Eb < 0] = 0
     return Eb / A * 1000  # keV
 
-def WS4_mass_formula(df):
 
+def WS4_mass_formula(df):
     N = df["n"].values
     Z = df["z"].values
-    A = N+Z
+    A = N + Z
     Da = 931.494102
     mp = 938.78307
     mn = 939.56542
 
-
-    file_path = os.path.join(os.path.dirname(__file__), 'data', 'WS4.txt')
+    file_path = os.path.join(os.path.dirname(__file__), "data", "WS4.txt")
 
     df_WS4 = pd.read_fwf(file_path, widths=[9, 9, 15, 15])
 
-    df_WS4['Z'] = df_WS4['Z'].astype(float)
-    df_WS4['N'] = df_WS4['A'].astype(float) - df_WS4['Z']
+    df_WS4["Z"] = df_WS4["Z"].astype(float)
+    df_WS4["N"] = df_WS4["A"].astype(float) - df_WS4["Z"]
 
     # Merge the two dataframes based on 'Z' and 'N'
-    merged_df = pd.merge(df, df_WS4, how='left', left_on=['z', 'n'], right_on=['Z', 'N'])
+    merged_df = pd.merge(
+        df, df_WS4, how="left", left_on=["z", "n"], right_on=["Z", "N"]
+    )
 
-    merged_df['WS4'] = Z*mp + N*mn - merged_df['WS4'].astype(float) - A*Da
+    merged_df["WS4"] = Z * mp + N * mn - merged_df["WS4"].astype(float) - A * Da
 
     # Create a new column 'WS4' in the merged dataframe and fill it with values from 'WS4' column in df_WS4
-    merged_df['WS4'] = merged_df['WS4'].fillna(0)
+    merged_df["WS4"] = merged_df["WS4"].fillna(0)
 
     # Drop unnecessary columns from the merged dataframe
-    merged_df = merged_df.drop(['A', 'Z', 'N', 'WS4+RBF'], axis=1)
+    merged_df = merged_df.drop(["A", "Z", "N", "WS4+RBF"], axis=1)
 
-    Eb = merged_df['WS4'].values.astype(float)
+    Eb = merged_df["WS4"].values.astype(float)
 
     Eb[Eb < 0] = 0
     return Eb / A * 1000  # keV
+
 
 def apply_to_df_col(column):
     def wrapper(fn):
@@ -302,10 +310,10 @@ def get_nuclear_data(recreate=False):
     df.reset_index(inplace=True)
     df = df[(df.z > 8) & (df.n > 8)]
 
-    zn2016 = pd.read_csv("data/2016.csv").set_index(["z","n"])
-    zn2020 = pd.read_csv("data/2020.csv").set_index(["z","n"])
+    zn2016 = pd.read_csv("data/2016.csv").set_index(["z", "n"])
+    zn2020 = pd.read_csv("data/2020.csv").set_index(["z", "n"])
     not_in_2016 = zn2020[~zn2020.index.isin(zn2016.index)].index
-    test_idx = df.set_index(["z","n"]).index.isin(not_in_2016)
+    test_idx = df.set_index(["z", "n"]).index.isin(not_in_2016)
 
     return df, test_idx
 
@@ -363,7 +371,7 @@ def prepare_nuclear_data(config: argparse.Namespace, recreate: bool = False):
     returns (Data): namedtuple of X, y, vocab_size, output_map, quantile_transformer
     """
     df, hold_out_idx = get_nuclear_data(recreate=recreate)
-    hold_out_X = torch.tensor(df[hold_out_idx][["z","n"]].values)
+    hold_out_X = torch.tensor(df[hold_out_idx][["z", "n"]].values)
     targets = get_targets(df)
 
     X = torch.tensor(targets[["z", "n"]].values)
@@ -396,7 +404,6 @@ def prepare_nuclear_data(config: argparse.Namespace, recreate: bool = False):
             targets[reg_columns].values
         )
 
-
     y = torch.tensor(targets[list(output_map.keys())].values).float()
 
     # Time to flatten everything
@@ -407,26 +414,28 @@ def prepare_nuclear_data(config: argparse.Namespace, recreate: bool = False):
     train_mask, test_mask = _train_test_split(
         len(y), config.TRAIN_FRAC, seed=config.SEED
     )
-    hold_out_mask = (X[:,:2].unsqueeze(1) == hold_out_X).all(-1).any(-1)
+    hold_out_mask = (X[:, :2].unsqueeze(1) == hold_out_X).all(-1).any(-1)
     if config.HOLDOUT.lower() == "true":
         train_mask = train_mask & ~hold_out_mask
         test_mask = test_mask & ~hold_out_mask
     elif config.HOLDOUT.lower() == "false":
         hold_out_mask &= False
-    else: raise ValueError(f"Unknown HOLDOUT {config.HOLDOUT}")
+    else:
+        raise ValueError(f"Unknown HOLDOUT {config.HOLDOUT}")
 
     # don't consider nuclei with high uncertainty in binding energy
     # but only for validation
     if config.TMS == "remove":
         except_binding = (df.binding_unc * (df.z + df.n) > 100).values
-        test_mask[::len(output_map)] = test_mask.view(-1)[::len(output_map)] & ~except_binding
+        test_mask[:: len(output_map)] = test_mask.view(-1)[:: len(output_map)] & (
+            not except_binding
+        )
     elif config.TMS != "keep":
         raise ValueError(f"Unknown TMS {config.TMS}")
 
     # scale those by A
-    binding_idxs = [i for i,x in enumerate(output_map.keys()) if "binding" in x]
+    binding_idxs = [i for i, x in enumerate(output_map.keys()) if "binding" in x]
     scaled_idxs = [sum(list(output_map.values())[:idx]) for idx in binding_idxs]
-
 
     return Data(
         X.to(config.DEV),
@@ -437,49 +446,5 @@ def prepare_nuclear_data(config: argparse.Namespace, recreate: bool = False):
         train_mask.to(config.DEV),
         test_mask.to(config.DEV),
         hold_out_mask.to(config.DEV),
-        scaled_idxs
-    )
-
-
-def prepare_modular_data(args: argparse.Namespace):
-    # modular arithmetic data
-    # X = cartesian product of [0..p] x [0..p]
-    # y = (x1 op x2) % p
-    X = torch.cartesian_prod(torch.arange(args.P), torch.arange(args.P))
-    n_embedding_inputs = X.shape[1]
-    output_map = OrderedDict()
-    for target in args.TARGETS_CLASSIFICATION:
-        output_map[target] = args.P
-    for target in args.TARGETS_REGRESSION:
-        output_map[target] = 1
-
-    y = torch.zeros(X.shape[0], len(output_map))
-    for idx, target in enumerate(output_map):
-        if target == "add":
-            y[:, idx] = (X[:, 0] + X[:, 1]) % args.P
-        elif target == "subtract":
-            y[:, idx] = (X[:, 0] - X[:, 1]) % args.P
-        elif target == "multiply":
-            y[:, idx] = (X[:, 0] * X[:, 1]) % args.P
-        else:
-            raise ValueError(f"Unknown target {target}")
-
-    feature_transformer = RobustScaler()
-    reg_cols = -len(args.TARGETS_REGRESSION)
-    if reg_cols != 0:
-        y[:, reg_cols:] = feature_transformer.fit_transform(y[:, reg_cols:])
-
-    train_mask, test_mask = _train_test_split_sampled(
-        X, args.TRAIN_FRAC, n_embedding_inputs, seed=args.SEED
-    )
-
-    return Data(
-        X.to(args.DEV),
-        y.to(args.DEV),
-        (args.P, args.P),
-        output_map,
-        feature_transformer,
-        train_mask.to(args.DEV),
-        test_mask.to(args.DEV),
-        None
+        scaled_idxs,
     )

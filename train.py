@@ -23,8 +23,8 @@ if args.WANDB:
         project=f"ai-nuclear",
         entity="iaifi",
         name=name,
-        notes="debugging cross validating",
-        tags=["debug"],
+        notes="",
+        tags=["master_run_all_data"],
         group="cross-val",
         config=vars(args),
     )

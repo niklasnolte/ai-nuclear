@@ -523,6 +523,9 @@ def prepare_nuclear_data(
         raise ValueError(f"Unknown TMS {config.TMS}")
 
     k_fold_cv_idx, train_include_masks = _leave_one_plus_four_out(X, config.N_FOLDS, output_map, test_include_mask, seed=config.SEED)
+    k_fold_cv_idx[:] = -1
+    train_include_masks[:] = True
+    test_include_mask[:] = True
 
     return Data(
         X.to(config.DEV),

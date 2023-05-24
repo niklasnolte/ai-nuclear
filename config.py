@@ -45,7 +45,7 @@ class Task(Enum):
                 },
             ],
             SCHED = ["cosine"],
-            FINAL_LR = [2e-5],
+            FINAL_LR = [1e-5],
             LIPSCHITZ = ["false"],
             DROPOUT = [0.0],
             TMS = ["remove"]

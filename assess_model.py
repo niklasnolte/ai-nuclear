@@ -17,21 +17,19 @@ from argparse import Namespace
 def read_args(path, device=None):
     args = Namespace(**yaml.load(open(path, "r"), Loader=yaml.FullLoader))
     args.WANDB = False
+    args.WHICH_FOLDS = list(range(args.N_FOLDS))
     if device:
         args.DEV = device
     return args
-logdir="./results/FULL/model_baseline/wd_0.01/lr_0.01/epochs_100/nfolds_5/hiddendim_32/depth_4/seed_0/batchsize_4096/targetsclassification_None/targetsregression_binding_semf:1-z:1-n:1-radius:1-qa:1-qbm:1-qbm_n:1-qec:1-sn:1-sp:1/sched_cosine/lipschitz_false/tms_remove"
-best_model_dir = os.path.join(logdir, "model_best.pt")
-shapes = os.path.join(logdir, "shapes.yaml")
-# shapes=None
-# args = get_args(Task.FULL)
-args = read_args(os.path.join(logdir, "args.yaml"))
-data = prepare_nuclear_data(args)
+logdir="/data/submit/nnolte/AI-NUCLEAR-LOGS/FULL/model_baseline/wd_0.01/lr_0.01/epochs_100/nfolds_3/whichfolds_{fold}/hiddendim_64/depth_4/seed_0/batchsize_4096/targetsclassification_None/targetsregression_binding_semf:1-radius:1-qa:1-qbm:1-qbm_n:1-qec:1-sn:1-sp:1/sched_cosine/finallr_2e-05/lipschitz_false/dropout_0.0/tms_remove"
+args = read_args(os.path.join(logdir.format(fold=0), "args.yaml"))
 trainer = Trainer(Task.FULL, args)
-# trainer.model = torch.load(model_dir).to("cpu")
-for fold, model in enumerate(trainer.models):
-  model.load_state_dict(torch.load(best_model_dir + f".{fold}"))
-  set_base_shapes(model, shapes, rescale_params=False, do_assert=False)
+data = trainer.data
+for fold in range(args.N_FOLDS):
+    model_dir = os.path.join(logdir.format(fold=fold), f"model_FULL.pt.{fold}")
+    shapes = os.path.join(logdir.format(fold=fold), "shapes.yaml")
+    trainer.models[fold].load_state_dict(torch.load(model_dir))
+    set_base_shapes(trainer.models[fold], shapes, rescale_params=False, do_assert=False)
 
 # %%
 # eval the model performance
@@ -113,7 +111,7 @@ def plot_repr(fold=0, which=0):
     plt.xlabel("PCA 1")
     plt.ylabel("PCA 2")
     plt.show()
-plot_repr(3,0)
+plot_repr(0,0)
 
 # %%
 def plot_be_comparison_1d(preds):
@@ -174,3 +172,5 @@ def plot_radius_values_heatmap(preds):
 
 
 plot_radius_values_heatmap(out_val)
+
+# %%

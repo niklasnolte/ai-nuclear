@@ -11,7 +11,7 @@ class Task(Enum):
             MODEL=["baseline"],
             WD=[1e-2],
             LR=[1e-2],
-            EPOCHS=[50000],
+            EPOCHS=[10000],
             N_FOLDS=[20],
             WHICH_FOLDS=[[i] for i in range(20)],
             HIDDEN_DIM=[1024],
@@ -24,8 +24,8 @@ class Task(Enum):
             ],
             TARGETS_REGRESSION=[
                 {
-                    # "binding": 1,
-                    "binding_semf": 1,
+                    "binding": 1,
+                    # "binding_semf": 1,
                     # "z": 1,
                     # "n": 1,
                     "radius": 1,

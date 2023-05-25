@@ -5,7 +5,6 @@ from matplotlib import pyplot as plt
 plt.style.use("mystyle-bright.mplstyle")
 import numpy as np
 from config import Task
-from data import prepare_nuclear_data
 from train_full import Trainer
 import os
 from mup import set_base_shapes
@@ -13,30 +12,50 @@ import yaml
 from argparse import Namespace
 
 # %%
-
 def read_args(path, device=None):
-    args = Namespace(**yaml.load(open(path, "r"), Loader=yaml.FullLoader))
+    args = Namespace(**yaml.safe_load(open(path, "r")))
+    # TODO fix the fact that this overrides the args in the yaml file
+    # WARNING!!! yaml reorders the dictionary target_regression, make sure to reorder it!!
+    args.TARGETS_REGRESSION = {
+                    # "binding": 1,
+                    "binding_semf": 1,
+                    "z": 1,
+                    "n": 1,
+                    "radius": 1,
+                    # "volume": 1,
+                    # "surface": 1,
+                    # "symmetry": 1,
+                    # "coulomb": 1,
+                    # "delta": 1,
+                    # "half_life_sec": 1,
+                    # "abundance": 1,
+                    "qa": 1,
+                    "qbm": 1,
+                    "qbm_n": 1,
+                    "qec": 1,
+                    # "sn": 1,
+                    # "sp": 1,
+                }
     args.WANDB = False
     if device:
         args.DEV = device
+    args.WHICH_FOLDS = list(range(args.N_FOLDS))
     return args
-logdir="./results/FULL/model_baseline/wd_0.01/lr_0.01/epochs_100/nfolds_5/hiddendim_32/depth_4/seed_0/batchsize_4096/targetsclassification_None/targetsregression_binding_semf:1-z:1-n:1-radius:1-qa:1-qbm:1-qbm_n:1-qec:1-sn:1-sp:1/sched_cosine/lipschitz_false/tms_remove"
-best_model_dir = os.path.join(logdir, "model_best.pt")
-shapes = os.path.join(logdir, "shapes.yaml")
-# shapes=None
-# args = get_args(Task.FULL)
-args = read_args(os.path.join(logdir, "args.yaml"))
-data = prepare_nuclear_data(args)
+logdir="/data/submit/nnolte/AI-NUCLEAR-LOGS/FULL/model_baseline/wd_0.01/lr_0.01/epochs_50000/nfolds_20/whichfolds_{fold}/hiddendim_1024/depth_4/seed_0/batchsize_4096/targetsclassification_None/targetsregression_binding_semf:1-z:1-n:1-radius:1-qa:1-qbm:1-qbm_n:1-qec:1/sched_cosine/lipschitz_false/tms_remove"
+args = read_args(os.path.join(logdir.format(fold=0), "args.yaml"))
 trainer = Trainer(Task.FULL, args)
-# trainer.model = torch.load(model_dir).to("cpu")
-for fold, model in enumerate(trainer.models):
-  model.load_state_dict(torch.load(best_model_dir + f".{fold}"))
-  set_base_shapes(model, shapes, rescale_params=False, do_assert=False)
-
+# %%
+data = trainer.data
+for fold in range(args.N_FOLDS):
+    model_dir = os.path.join(logdir.format(fold=fold), f"model_FULL.pt.{fold}")
+    print(model_dir)
+    shapes = os.path.join(logdir.format(fold=fold), "shapes.yaml")
+    trainer.models[fold].load_state_dict(torch.load(model_dir))
+    set_base_shapes(trainer.models[fold], shapes, rescale_params=False, do_assert=False)
 # %%
 # eval the model performance
-metrics = trainer.val_step(0, False)
-print(metrics)
+metrics = trainer.val_step(False)
+metrics
 
 # %%
 [m.eval() for m in trainer.models]
@@ -44,10 +63,10 @@ outs = [trainer._unscale_output(m(data.X).detach().clone()) for m in trainer.mod
 out_val = torch.zeros_like(outs[0])
 out_train = torch.zeros_like(outs[0])
 for fold, model in enumerate(trainer.models):
-    val_mask = data.fold_idxs == fold
+    val_mask = data.val_masks[fold]
     out_val[val_mask] = outs[fold][val_mask]
 
-    train_mask = data.fold_idxs != fold
+    train_mask = data.train_masks[fold]
     out_train[train_mask] += outs[fold][train_mask]
 
 out_train /= len(trainer.models) - 1 # for each data points there are n-1 / n preds
@@ -174,3 +193,5 @@ def plot_radius_values_heatmap(preds):
 
 
 plot_radius_values_heatmap(out_val)
+
+# %%

@@ -69,7 +69,7 @@ for fold, model in enumerate(trainer.models):
     train_mask = data.train_masks[fold]
     out_train[train_mask] += outs[fold][train_mask]
 
-out_train /= len(trainer.models) - 1 # for each data points there are n-1 / n preds
+out_train /= data.train_masks.sum(0)[:, None]
 
 # %%
 def plot_pca(fold=0):
@@ -155,14 +155,16 @@ def plot_be_heatmap(preds):
     target_name = "binding_semf"
     target_idx = list(data.output_map.keys()).index(target_name)
     target_mask = (data.X[:, -1] == target_idx) & (~data.y.isnan().view(-1))
+    # some preds are 0 because > 100 uncertainty!!
+    #target_mask &= preds[:, target_idx].detach().cpu() != 0
     pred_target = preds[target_mask, target_idx].detach().cpu()
     true_target = trainer.unscaled_y.view(-1)[target_mask].detach().cpu()
     plt.title(target_name)
     # # heat map of difference as function of z and n
     z, n = data.X[target_mask, 0].detach().cpu(), data.X[target_mask, 1].detach().cpu()
-    plt.scatter(z, n, c = pred_target - true_target, s = 1.5, marker="s", cmap="bwr")
+    plt.scatter(z, n, c = true_target - pred_target, s = 1.5, marker="s", cmap="bwr")
     plt.colorbar()
-    clim = max(abs(pred_target - true_target)) * .8
+    clim = max(abs(true_target - pred_target)) * .8
     plt.clim(-clim, clim)
     # plt.hist2d(pred_target, true_target, bins=20)
     # plt.xlabel("pred")

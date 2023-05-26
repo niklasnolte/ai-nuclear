@@ -195,7 +195,8 @@ class Trainer:
         else:
             A = self.data.X[:: self.num_tasks, :2].sum(1).view(-1, 1)
         out = torch.from_numpy(out).to(self.args.DEV)
-        out[:, :2] = out[:, :2] * (A)
+        binding_idxs = [i for i, t in enumerate(self.data.output_map) if "binding" in t]
+        out[:, binding_idxs] = out[:, binding_idxs] * (A)
         return out
 
     @cached_property

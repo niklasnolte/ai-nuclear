@@ -22,7 +22,8 @@ def read_args(path, device=None):
     return args
 #logdir="/data/submit/nnolte/AI-NUCLEAR-LOGS/FULL/model_baseline/wd_0.01/lr_0.01/epochs_100/nfolds_3/whichfolds_{fold}/hiddendim_64/depth_4/seed_0/batchsize_4096/targetsclassification_None/targetsregression_binding_semf:1-radius:1-qa:1-qbm:1-qbm_n:1-qec:1-sn:1-sp:1/sched_cosine/finallr_2e-05/lipschitz_false/dropout_0.0/tms_remove"
 seed = 3
-logdir=f"/export/d0/nnolte/ai-nuclear/cval_master/FULL/model_baseline/wd_1e-05/lr_0.01/epochs_10000/nfolds_20/whichfolds_0/hiddendim_1024/depth_4/seed_{seed}/batchsize_4096/targetsclassification_None/targetsregression_binding_semf:1-radius:1-qa:1-qbm:1-qbm_n:1-qec:1-sn:1-sp:1/sched_cosine/finallr_1e-05/lipschitz_false/dropout_0.0/tms_remove"
+#logdir=f"/export/d0/nnolte/ai-nuclear/cval_master/FULL/model_baseline/wd_1e-05/lr_0.01/epochs_10000/nfolds_20/whichfolds_0/hiddendim_1024/depth_4/seed_{seed}/batchsize_4096/targetsclassification_None/targetsregression_binding_semf:1-radius:1-qa:1-qbm:1-qbm_n:1-qec:1-sn:1-sp:1/sched_cosine/finallr_1e-05/lipschitz_false/dropout_0.0/tms_remove"
+logdir=f"/export/d0/nnolte/ai-nuclear/cval_master/FULL/model_baseline/wd_0.0001/lr_0.001/epochs_10000/nfolds_20/whichfolds_0/hiddendim_1024/depth_4/seed_{seed}/batchsize_4096/targetsclassification_None/targetsregression_binding:1-radius:1-qa:1-qbm:1-qbm_n:1-qec:1-sn:1-sp:1/sched_cosine/finallr_1e-05/lipschitz_false/dropout_0.0/tms_remove"
 args = read_args(os.path.join(logdir.format(fold=0), "args.yaml"))
 trainer = Trainer(Task.FULL, args)
 data = trainer.data
@@ -31,13 +32,15 @@ model_dir = os.path.join(logdir, f"model_FULL.pt.0")
 shapes = os.path.join(logdir, "shapes.yaml")
 model.load_state_dict(torch.load(model_dir))
 model = set_base_shapes(model, shapes, rescale_params=False, do_assert=False)
-
+model.eval()
 
 # %%
-model.eval()
+# save embeddings to npz file
+embs = [m.detach().cpu().numpy() for m in model.emb]
+np.savez("embeddings.npz", *embs)
+
+# %%
 out_val = trainer._unscale_output(model(data.X).detach().clone())
-all_X = torch.cartesian_prod(torch.arange(data.X[:,0].max()+1), torch.arange(data.X[:,1].max()+1), torch.arange(data.X[:,2].max()+1))
-# continue here
 
 # %%
 def plot_pca():
@@ -47,7 +50,7 @@ def plot_pca():
     embs = []
     for i in range(len(trainer.data.vocab_size)):
         embs.append(pca.fit_transform(model.emb[i].detach().cpu()))
-        #print(pca.explained_variance_ratio_)
+        print(pca.explained_variance_ratio_)
     for idx in range(n_components-1):
         fig, axes = plt.subplots(2, 1, figsize=(15, 15), dpi=100)
         for emb, m, ax in zip(embs, "oo", axes.flatten()):

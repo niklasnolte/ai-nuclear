@@ -230,7 +230,6 @@ def get_nuclear_data(recreate=False):
         df["binding_sys"] = df2.binding_sys
         df.reset_index(inplace=True)
 
-    df = df[(df.z > 8) & (df.n > 8)]
     return df
 
 
@@ -318,6 +317,7 @@ def prepare_nuclear_data(config: argparse.Namespace, recreate: bool = False):
     returns (Data): namedtuple of X, y, vocab_size, output_map, quantile_transformer
     """
     df = get_nuclear_data(recreate=recreate)
+    df = df[(df.z > config.INCLUDE_NUCLEI_GT) & (df.n > config.INCLUDE_NUCLEI_GT)]
     targets = get_targets(df)
 
     X = torch.tensor(targets[["z", "n"]].values)
@@ -376,6 +376,9 @@ def prepare_nuclear_data(config: argparse.Namespace, recreate: bool = False):
         )
     elif config.TMS != "keep":
         raise ValueError(f"Unknown TMS {config.TMS}")
+
+    # remove everything with z, n < 9 from validation
+    test_masks = test_masks & (X[:, :2] > 8).all(dim=1)
 
     return Data(
         X.to(config.DEV),

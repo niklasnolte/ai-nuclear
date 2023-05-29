@@ -114,55 +114,31 @@ def plot_pca_pdf():
         embs.append(pca.fit_transform(trainer.models[0].emb[i][ignore_first:].detach().cpu()))
         print(pca.explained_variance_ratio_)
     for emb, type_ in zip(embs, ["proton", "neutron"]):
-        plt.figure(figsize=(14, 7))
+        plt.figure(figsize=(21,7))
         y = emb[:, 2]
         yplot = (y - y.min()) / (y.max() - y.min())
         colors = plt.cm.viridis(yplot)
         for i, (x, y) in enumerate(emb[:, :2]):
             plt.annotate(i+ignore_first, (x, y), color=colors[i])
         plt.scatter(emb[:, 0], emb[:, 1], c=colors[:len(emb)], marker="o", s=1)
+        cbar = plt.colorbar()
+        cbar.set_ticks([])
         plt.xlabel("PC1")
         plt.ylabel("PC2")
+        SMALL_SIZE = 8
+        MEDIUM_SIZE = 10
+        BIGGER_SIZE = 20
+        plt.rc('font', size=MEDIUM_SIZE)          # controls default text sizes
+        plt.rc('axes', titlesize=SMALL_SIZE)     # fontsize of the axes title
+        plt.rc('axes', labelsize=BIGGER_SIZE)    # fontsize of the x and y labels
+        plt.rc('xtick', labelsize=SMALL_SIZE)    # fontsize of the tick labels
+        plt.rc('ytick', labelsize=SMALL_SIZE)    # fontsize of the tick labels
+        plt.rc('legend', fontsize=SMALL_SIZE)    # legend fontsize
         plt.tight_layout()
+        plt.subplots_adjust(right=1.1)
         plt.savefig(f"pca_{type_}.pdf")
 
 plot_pca_pdf()
-# %%
-def plot_repr(fold=0, which=0):
-    model = trainer.models[fold]
-    fig, ax = plt.subplots(1, 1, figsize=(12, 12), dpi=100)
-    pca = PCA(n_components=3)
-    model.eval()
-    task = 0
-    task_mask = (data.X[:, -1] == task)# & (~data.y.isnan().view(-1)) & (data.train_mask)
-    X = model.emb[which].repeat(1, 3)
-    if which == 0:
-        X[:, args.HIDDEN_DIM:] = 0
-        title = "Z Representations"
-    elif which == 1:
-        X[:, :args.HIDDEN_DIM] = 0
-        X[:, -args.HIDDEN_DIM:] = 0
-        title = "N Representations"
-    elif which == 2:
-        X[:, :args.HIDDEN_DIM] = 0
-        title = "Task Representations"
-    else:
-        X = model.embed_input(data.X[task_mask], model.emb)
-        title = "(N, Z) Representations"
-    X = model.nonlinear[:1](X)
-    X = pca.fit_transform(X.detach().cpu())
-
-    c = X[:, 2]
-    plt.scatter(X[:, 0], X[:, 1], c=c, s=1)
-    for i, (x, y) in enumerate(X[:, :2]):
-        plt.annotate(i, (x, y), color=plt.cm.viridis(c)[i])
-    cbar = plt.colorbar()
-    cbar.set_label("PCA 3")
-    plt.title(title)
-    plt.xlabel("PCA 1")
-    plt.ylabel("PCA 2")
-    plt.show()
-plot_repr(3,0)
 
 # %%
 def plot_be_comparison_1d(preds):
@@ -187,6 +163,7 @@ def plot_be_heatmap(preds):
     target_mask = (data.X[:, -1] == target_idx) & (~data.y.isnan().view(-1))
     # some preds are 0 because > 100 uncertainty!!
     target_mask &= preds[:, target_idx].detach().cpu() != 0
+    #target_mask &= (data.X[:, :2] > 28).all(1)
     pred_target = preds[target_mask, target_idx].detach().cpu()
     true_target = trainer.unscaled_y.view(-1)[target_mask].detach().cpu()
     rms = torch.sqrt(((pred_target - true_target)**2).mean()).item()

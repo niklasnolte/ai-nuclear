@@ -37,6 +37,8 @@ def read_args(path, device=None):
                     # "sp": 1,
                 }
     args.WANDB = False
+    if not hasattr(args, "INCLUDE_NUCLEI_GT"):
+     args.INCLUDE_NUCLEI_GT = 8
     if device:
         args.DEV = device
     args.WHICH_FOLDS = list(range(args.N_FOLDS))
@@ -77,8 +79,10 @@ def plot_pca(fold=0):
     pca = PCA(n_components=n_components)
     print(trainer.data.vocab_size)
     embs = []
-    for i in range(len(trainer.data.vocab_size)):
-        embs.append(pca.fit_transform(trainer.models[0].emb[i].detach().cpu()))
+    ignore_first = 9
+    for i in range(len(trainer.data.vocab_size[:-1])):
+        print(trainer.models[0].emb[i].shape)
+        embs.append(pca.fit_transform(trainer.models[0].emb[i][ignore_first:].detach().cpu()))
         print(pca.explained_variance_ratio_)
     for idx in range(n_components-1):
         fig, axes = plt.subplots(2, 1, figsize=(15, 15), dpi=100)
@@ -88,15 +92,41 @@ def plot_pca(fold=0):
                 y = emb[:, 2]
             else:
                 y = np.linspace(0, 1, len(emb))
-            colors = plt.cm.viridis(y)
+            yplot = (y - y.min()) / (y.max() - y.min())
+            colors = plt.cm.viridis(yplot)
             for i, (x, y) in enumerate(emb[:, :2]):
-                ax.annotate(i, (x, y), color=colors[i])
+                ax.annotate(i+ignore_first, (x, y), color=colors[i])
             ax.scatter(emb[:, 0], emb[:, 1], c=colors[:len(emb)], marker=m, s=1)
         axes[0].set_title("Embeddings Z")
         axes[1].set_title("Embeddings N")
         plt.show()
 
 plot_pca(1)
+
+# %%
+def plot_pca_pdf():
+    pca = PCA(n_components=3)
+    print(trainer.data.vocab_size)
+    embs = []
+    ignore_first = 9
+    for i in range(len(trainer.data.vocab_size[:-1])):
+        print(trainer.models[0].emb[i].shape)
+        embs.append(pca.fit_transform(trainer.models[0].emb[i][ignore_first:].detach().cpu()))
+        print(pca.explained_variance_ratio_)
+    for emb, type_ in zip(embs, ["proton", "neutron"]):
+        plt.figure(figsize=(14, 7))
+        y = emb[:, 2]
+        yplot = (y - y.min()) / (y.max() - y.min())
+        colors = plt.cm.viridis(yplot)
+        for i, (x, y) in enumerate(emb[:, :2]):
+            plt.annotate(i+ignore_first, (x, y), color=colors[i])
+        plt.scatter(emb[:, 0], emb[:, 1], c=colors[:len(emb)], marker="o", s=1)
+        plt.xlabel("PC1")
+        plt.ylabel("PC2")
+        plt.tight_layout()
+        plt.savefig(f"pca_{type_}.pdf")
+
+plot_pca_pdf()
 # %%
 def plot_repr(fold=0, which=0):
     model = trainer.models[fold]
@@ -156,16 +186,26 @@ def plot_be_heatmap(preds):
     target_idx = list(data.output_map.keys()).index(target_name)
     target_mask = (data.X[:, -1] == target_idx) & (~data.y.isnan().view(-1))
     # some preds are 0 because > 100 uncertainty!!
-    #target_mask &= preds[:, target_idx].detach().cpu() != 0
+    target_mask &= preds[:, target_idx].detach().cpu() != 0
     pred_target = preds[target_mask, target_idx].detach().cpu()
     true_target = trainer.unscaled_y.view(-1)[target_mask].detach().cpu()
-    plt.title(target_name)
+    rms = torch.sqrt(((pred_target - true_target)**2).mean()).item()
+    print(f"RMS: {rms} keV")
     # # heat map of difference as function of z and n
     z, n = data.X[target_mask, 0].detach().cpu(), data.X[target_mask, 1].detach().cpu()
-    plt.scatter(z, n, c = true_target - pred_target, s = 1.5, marker="s", cmap="bwr")
+    #plt.figure(figsize=(5, (n.max() - n.min()) / (z.max() - z.min()) * 5))
+    plt.scatter(n, z, c = true_target - pred_target, s = 1.5, marker="s", cmap="bwr")
     plt.colorbar()
-    clim = max(abs(true_target - pred_target)) * .8
+    #clim = max(abs(true_target - pred_target)) * .3
+    clim = 300
     plt.clim(-clim, clim)
+    plt.tight_layout()
+    plt.ylabel("Proton Number")
+    plt.xlabel("Neutron Number")
+    plt.subplots_adjust(bottom=0.1, left=0.1, right=1.01)
+    plt.xlim(5, 168)
+    plt.ylim(5, 115)
+    plt.savefig("be_heatmap.pdf")
     # plt.hist2d(pred_target, true_target, bins=20)
     # plt.xlabel("pred")
     # plt.ylabel("true")
@@ -177,21 +217,28 @@ plot_be_heatmap(out_val)
 def plot_radius_values_heatmap(preds):
     target_name = "radius"
     target_idx = list(data.output_map.keys()).index(target_name)
-    target_mask = (data.X[:, -1] == target_idx)
+    target_mask = (data.X[:, -1] == target_idx) & (~data.y.isnan().view(-1))
+    # some preds are 0 because > 0.005fm uncertainty!!
+    target_mask &= preds[:, target_idx].detach().cpu() != 0
     pred_target = preds[target_mask, target_idx].detach().cpu()
     true_target = trainer.unscaled_y.view(-1)[target_mask].detach().cpu()
+    rms = torch.sqrt(((pred_target - true_target)**2).mean()).item()
+    print(f"RMS: {rms} fm")
+    print(f"MEDIAN: {torch.median((pred_target - true_target).abs()).item()} fm")
     # 2 figures next to each other
-    plt.figure(figsize=(15, 5))
-    plt.subplot(1, 2, 1)
-    plt.title(target_name + " val preds")
     z, n = data.X[target_mask, 0].detach().cpu(), data.X[target_mask, 1].detach().cpu()
-    plt.scatter(z, n, c = pred_target, s = 1.5, marker="s", cmap="bwr")
+    heatval = true_target - pred_target
+    plt.scatter(n, z, c = heatval, s = 1.5, marker="s", cmap="bwr")
     plt.colorbar()
-    plt.subplot(1, 2, 2)
-    plt.title(target_name + " truth")
-    # plot the true values
-    plt.scatter(z, n, c = true_target, s = 1.5, marker="s", cmap="bwr")
-    plt.colorbar()
+    clim = 0.03
+    plt.clim(-clim, clim)
+    plt.tight_layout()
+    plt.ylabel("Proton Number")
+    plt.xlabel("Neutron Number")
+    plt.xlim(5, 168)
+    plt.ylim(5, 115)
+    plt.subplots_adjust(bottom=0.1, left=0.1, right=1.01)
+    plt.savefig("radius_heatmap.pdf")
 
 
 plot_radius_values_heatmap(out_val)

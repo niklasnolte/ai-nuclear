@@ -1,23 +1,22 @@
 import torch
 from torch import nn
-from torch.nn import functional as F
 from functools import partial
 import mup
 import warnings
-from typing import Callable, Iterable
+from typing import Callable, Iterable, Optional, Tuple, Union, List
 from data import Data
+from monotonenorm.functional import direct_norm
 import os
-from monotonenorm import direct_norm, GroupSort
-import torch.nn.utils.parametrize as p
 
 class RNN(nn.Module):
     def __init__(
         self,
-        vocab_size: Iterable,
+        vocab_size: List[int],
         non_embedded_input_dim: int,
         hidden_dim: int,
         output_dim: int,
         depth: int = 2,
+        dropout: float = 0.0,
         lipschitz: bool = False,
     ):
         super().__init__()
@@ -30,9 +29,9 @@ class RNN(nn.Module):
         self.task_emb = nn.Parameter(self.task_emb)
 
         self.protonet = nn.Sequential(
-            *[ResidualBlock(hidden_dim, activation=nn.SiLU()) for _ in range(depth)])
+            *[ResidualBlock(hidden_dim, activation=nn.SiLU(), dropout=dropout) for _ in range(depth)])
         self.neutronet = nn.Sequential(
-            *[ResidualBlock(hidden_dim, activation=nn.SiLU()) for _ in range(depth)])
+            *[ResidualBlock(hidden_dim, activation=nn.SiLU(), dropout=dropout) for _ in range(depth)])
         self.nonlinear = nn.Sequential(
             nn.Linear(hidden_dim * 2, hidden_dim),
             nn.SiLU(),
@@ -60,10 +59,10 @@ class RNN(nn.Module):
 class Base(nn.Module):
     def __init__(
         self,
-        vocab_size: Iterable,
+        vocab_size: List[int],
         non_embedded_input_dim: int,
         hidden_dim: int,
-        embedding_dim: int = None,
+        embedding_dim: Optional[int] = None,
         share_embeddings: bool = False,
     ):
         super().__init__()
@@ -105,7 +104,7 @@ class ResidualBlock(nn.Module):
         d_model: int,
         dropout: float = 0.0,
         activation: nn.Module = nn.ReLU(),
-        norm: Callable = None,
+        norm: Optional[Callable] = None,
     ):
         norm = norm or (lambda x: x)
         super().__init__()
@@ -131,7 +130,7 @@ class ResidualBlock(nn.Module):
 class BaselineModel(Base):
     def __init__(
         self,
-        vocab_size: Iterable,
+        vocab_size: List[int],
         non_embedded_input_dim: int,
         hidden_dim: int,
         output_dim: int,
@@ -193,7 +192,8 @@ def _append_readout(model_fn: Callable) -> Callable:
                 model[-1], nn.Linear
             ), "Last layer of sequential model must be linear (readout)"
             old_readout = model.pop(len(model) - 1)
-            model.append(mup.MuReadout(*old_readout.weight.T.shape))
+            shape = old_readout.weight.T.shape
+            model.append(mup.MuReadout(*shape))
         else:
             assert hasattr(
                 model, "readout"
@@ -234,11 +234,12 @@ def make_mup(model_fn: Callable, shape_file=None, **scale_kwargs) -> nn.Module:
     for name, param in model.named_parameters():
         if "weight" in name.lower() or "emb" in name.lower():  # FIXME or not
             # mup.init.uniform_(param, -.1, .1)
-            mup.init.kaiming_uniform_(param, a=5**0.5, nonlinearity="leaky_relu")
+            mup.kaiming_uniform_(param, a=5.**0.5, nonlinearity="leaky_relu")
     return model
 
 
 def get_model_and_optim(data: Data, config):
+    torch.manual_seed(config.SEED)
     # set up model
     if config.MODEL == "splitup" or config.MODEL == "transformer":
         output_dim = list(data.output_map.values())
@@ -252,6 +253,7 @@ def get_model_and_optim(data: Data, config):
         non_embedded_input_dim=data.X.shape[1] - len(data.vocab_size),
         output_dim=output_dim,
         depth=config.DEPTH,
+        dropout=config.DROPOUT,
         lipschitz=config.LIPSCHITZ == "true",
     )
     if hasattr(config, "basedir"):
@@ -271,12 +273,8 @@ def get_model_and_optim(data: Data, config):
             "weight_decay": config.WD,
         },
     ]
-    # optimizer = mup.MuSGD(param_groups, lr=config.LR, momentum=.99, nesterov=True)
     if hasattr(config, "OPTIM") and config.OPTIM == "sgd":
         optimizer = mup.MuSGD(param_groups, lr=config.LR)
     else:
         optimizer = mup.MuAdamW(param_groups, lr=config.LR)
-    # split into weights biases
-    # optimizer = torch.optim.AdamW(param_groups, lr=config.LR, amsgrad=True)
-    # optimizer = torch.optim.AdamW(model.parameters(), lr=config.LR, weight_decay=config.WD)
     return model, optimizer

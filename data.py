@@ -3,13 +3,12 @@ import pandas as pd
 import urllib.request
 import os
 from sklearn.preprocessing import (
-    QuantileTransformer,
     MinMaxScaler,
     RobustScaler,
-    StandardScaler,
 )
 import torch
 import argparse
+import warnings
 from collections import namedtuple, OrderedDict
 
 
@@ -21,6 +20,23 @@ def delta(Z, N):
     delta[(Z % 2 == 0) & (N % 2 == 1)] = 0
     delta[(Z % 2 == 1) & (N % 2 == 0)] = 0
     return delta
+
+
+def shell(Z, N):
+    # calculates the shell effects according to "Mutual influence of terms in a semi-empirical" Kirson
+    warnings.filterwarnings("ignore", category=RuntimeWarning)
+    alpham = -1.9
+    betam = 0.14
+    magic = [2, 8, 20, 28, 50, 82, 126, 184]
+
+    def find_nearest(lst, target):
+        return min(lst, key=lambda x: abs(x - target))
+
+    nup = np.array([abs(x - find_nearest(magic, x)) for x in Z])
+    nun = np.array([abs(x - find_nearest(magic, x)) for x in N])
+    P = nup * nun / (nup + nun)
+    P[np.isnan(P)] = 0
+    return alpham * P + betam * P**2
 
 
 def semi_empirical_mass_formula(Z, N):
@@ -36,6 +52,70 @@ def semi_empirical_mass_formula(Z, N):
         - aA * (N - Z) ** 2 / A
         + delta(Z, N)
     )
+    Eb[Eb < 0] = 0
+    return Eb / A * 1000  # keV
+
+
+# TODO move all the physics functions to a separate file
+def BW2_mass_formula(Z, N):
+    A = N + Z
+
+    aV = 16.58
+    aS = -26.95
+    aC = -0.774
+    aA = -31.51
+    axC = 2.22
+    aW = -43.4
+    ast = 55.62
+    aR = 14.77
+
+    Eb = (
+        aV * A
+        + aS * A ** (2 / 3)
+        + aC * Z**2 / (A ** (1 / 3))
+        + aA * (N - Z) ** 2 / A
+        + delta(Z, N)
+        + shell(Z, N)
+        + aR * A ** (1 / 3)
+        + axC * Z ** (4 / 3) / A ** (1 / 3)
+        + aW * abs(N - Z) / A
+        + ast * (N - Z) ** 2 / A ** (4 / 3)
+    )
+
+    Eb[Eb < 0] = 0
+    return Eb / A * 1000  # keV
+
+
+def WS4_mass_formula(df):
+    N = df["n"].values
+    Z = df["z"].values
+    A = N + Z
+    Da = 931.494102
+    mp = 938.78307
+    mn = 939.56542
+
+    file_path = os.path.join(os.path.dirname(__file__), "data", "WS4.txt")
+
+    df_WS4 = pd.read_fwf(file_path, widths=[9, 9, 15, 15])
+
+    df_WS4["Z"] = df_WS4["Z"].astype(float)
+    df_WS4["N"] = df_WS4["A"].astype(float) - df_WS4["Z"]
+
+    # Merge the two dataframes based on 'Z' and 'N'
+    merged_df = pd.merge(
+        df, df_WS4, how="left", left_on=["z", "n"], right_on=["Z", "N"]
+    )
+
+    merged_df["WS4"] = Z * mp + N * mn - merged_df["WS4"].astype(float) - A * Da
+
+    # Create a new column 'WS4' in the merged dataframe and fill it with values from 'WS4' column in df_WS4
+    merged_df["WS4"] = merged_df["WS4"].fillna(0)
+
+    # Drop unnecessary columns from the merged dataframe
+    merged_df = merged_df.drop(["A", "Z", "N", "WS4+RBF"], axis=1)
+
+    Eb = merged_df["WS4"].values.astype(float)
+
     Eb[Eb < 0] = 0
     return Eb / A * 1000  # keV
 
@@ -169,6 +249,10 @@ def get_targets(df):
     targets["binding"] = get_binding_energy_from(df)
     # binding energy per nucleon minus semi empirical mass formula
     targets["binding_semf"] = targets.binding - semi_empirical_mass_formula(df.z, df.n)
+    # binding energy per nucleon minus semi empirical mass formula (including shell effects)
+    targets["binding_BW2"] = targets.binding - BW2_mass_formula(df.z, df.n)
+    # binding energy per nucleon minus WS4 formula
+    targets["binding_WS4"] = targets.binding - WS4_mass_formula(df)
     # radius in fm
     targets["radius"] = get_radius_from(df)
     # half life in log10(sec)
@@ -216,19 +300,17 @@ def get_nuclear_data(recreate=False):
         )
         return pd.read_csv(urllib.request.urlopen(req))
 
-    if not os.path.exists("data"):
-        os.mkdir("data")
+    os.makedirs("data", exist_ok=True)
+    # TODO explain what is hapenning here
+    df2 = pd.read_csv("data/ame2020.csv").set_index(["z", "n"])
+    df2 = df2[~df2.index.duplicated(keep="first")]
     if recreate or not os.path.exists("data/ground_states.csv"):
         df = lc_read_csv("fields=ground_states&nuclides=all")
         df.to_csv("data/ground_states.csv", index=False)
-    else:
-        # df = pd.read_csv("data/ground_states.csv")
-        df2 = pd.read_csv("data/ame2020.csv").set_index(["z", "n"])
-        df2 = df2[~df2.index.duplicated(keep="first")]
-        df = pd.read_csv("data/ground_states.csv").set_index(["z", "n"])
-        df["binding_unc"] = df2.binding_unc
-        df["binding_sys"] = df2.binding_sys
-        df.reset_index(inplace=True)
+    df = pd.read_csv("data/ground_states.csv").set_index(["z", "n"])
+    df["binding_unc"] = df2.binding_unc
+    df["binding_sys"] = df2.binding_sys
+    df.reset_index(inplace=True)
 
     return df
 
@@ -243,48 +325,12 @@ Data = namedtuple(
         "regression_transformer",
         "train_masks",
         "val_masks",
+        "scaled_idxs",
     ],
 )
 
 
-def _train_test_split_exact(X, train_frac, n_embedding_inputs, seed=1):
-    """
-    Take exactly train_frac of the data as training data.
-    """
-    # TODO shuffle data when using SGD
-    torch.manual_seed(seed)
-    while True:
-        train_mask = torch.ones(X.shape[0], dtype=torch.bool)
-        train_mask[int(train_frac * X.shape[0]) :] = False
-        train_mask = train_mask[torch.randperm(X.shape[0])]
-        for i in range(n_embedding_inputs):
-            if len(X[train_mask][:, i].unique()) != len(X[:, i].unique()):
-                print("resampling train mask")
-                break
-        else:
-            break
-    test_mask = ~train_mask
-    return train_mask, test_mask
-
-
-def _train_test_split_sampled(X, train_frac, n_embedding_inputs, seed=1):
-    """
-    Samples are assigned to train by a bernoulli distribution with probability train_frac.
-    """
-    torch.manual_seed(seed)
-    # assert that we have each X at least once in the training set
-    while True:
-        train_mask = torch.rand(X.shape[0]) < train_frac
-        for i in range(n_embedding_inputs):
-            if len(X[train_mask][:, i].unique()) != len(X[:, i].unique()):
-                print("Resampling train mask")
-                break
-        else:
-            break
-    test_mask = ~train_mask
-    return train_mask, test_mask
-
-
+# TODO explain what is happening here
 def _train_test_split(size, n_folds, X, seed=1):
     torch.manual_seed(seed)
     all_zs = X[:, 0]
@@ -304,6 +350,70 @@ def _train_test_split(size, n_folds, X, seed=1):
         else:
             val_masks = [train_idx == i for i in range(n_folds)]
             return torch.stack(train_masks), torch.stack(val_masks)
+
+
+def _leave_one_plus_four_out(X, train_masks, val_masks, output_map, seed=1):
+    # we have to avoid cheating, so we need to remove from training
+    # data that is too correlated with the validation data
+    # so for each Sn, Sp target, we remove the M of all ajacent nuclei
+    # and for M, we remove the Sp and Sn of all ajacent nuclei
+    binding_idx = [i for i, x in enumerate(output_map.keys()) if "binding" in x]
+    sn_idx = [i for i, x in enumerate(output_map.keys()) if "sn" in x]
+    sp_idx = [i for i, x in enumerate(output_map.keys()) if "sp" in x]
+
+    assert len(binding_idx) == 1
+    assert len(sn_idx) == 1
+    assert len(sp_idx) == 1
+
+    binding_idx = binding_idx[0]
+    sn_idx = sn_idx[0]
+    sp_idx = sp_idx[0]
+
+    for fold, val_mask in enumerate(val_masks):
+        X_val_set = X[val_mask]
+        X_binding = X_val_set[X_val_set[:, 2] == binding_idx]
+        X_sn = X_val_set[X_val_set[:, 2] == sn_idx]
+        X_sp = X_val_set[X_val_set[:, 2] == sp_idx]
+        binding_relative_removals = torch.tensor(
+            [
+                [0, 0, sn_idx - binding_idx],
+                [0, 0, sp_idx - binding_idx],
+                [-1, 0, sn_idx - binding_idx],
+                [-1, 0, sp_idx - binding_idx],
+                [1, 0, sn_idx - binding_idx],
+                [1, 0, sp_idx - binding_idx],
+                [0, -1, sn_idx - binding_idx],
+                [0, -1, sp_idx - binding_idx],
+                [0, 1, sn_idx - binding_idx],
+                [0, 1, sp_idx - binding_idx],
+            ]
+        )
+        sn_relative_removals = torch.tensor(
+            [
+                [0, 0, binding_idx - sn_idx],
+                [-1, 0, binding_idx - sn_idx],
+                [1, 0, binding_idx - sn_idx],
+                [0, -1, binding_idx - sn_idx],
+                [0, 1, binding_idx - sn_idx],
+            ]
+        )
+        sp_relative_removals = sn_relative_removals.clone()
+        sp_relative_removals[:, 2] = binding_idx - sp_idx
+
+        X_tasks = [X_binding, X_sn, X_sp]
+        relative_removals = [
+            binding_relative_removals,
+            sn_relative_removals,
+            sp_relative_removals,
+        ]
+        for X_task, removals in zip(X_tasks, relative_removals):
+            for xi in X_task:
+                to_remove = xi + removals
+                # remove all from X that are in to_remove
+                mask = (X[:, None] == to_remove).all(-1).any(-1)
+                train_masks[fold][mask] = False
+
+    return train_masks
 
 
 def prepare_nuclear_data(config: argparse.Namespace, recreate: bool = False):
@@ -361,6 +471,10 @@ def prepare_nuclear_data(config: argparse.Namespace, recreate: bool = False):
         len(y), config.N_FOLDS, X, seed=config.SEED
     )
 
+    # scale those by A
+    binding_idxs = [i for i, x in enumerate(output_map.keys()) if "binding" in x]
+    scaled_idxs = [sum(list(output_map.values())[:idx]) for idx in binding_idxs]
+
     # don't consider nuclei with high uncertainty in binding energy
     # but only for validation
     if config.TMS == "remove":
@@ -377,6 +491,9 @@ def prepare_nuclear_data(config: argparse.Namespace, recreate: bool = False):
     elif config.TMS != "keep":
         raise ValueError(f"Unknown TMS {config.TMS}")
 
+    train_masks = _leave_one_plus_four_out(
+        X, train_masks, test_masks, output_map, seed=config.SEED
+    )
     # remove everything with z, n < 9 from validation
     test_masks = test_masks & (X[:, :2] > 8).all(dim=1)
 
@@ -388,47 +505,5 @@ def prepare_nuclear_data(config: argparse.Namespace, recreate: bool = False):
         feature_transformer,
         train_masks.to(config.DEV),
         test_masks.to(config.DEV),
-    )
-
-
-def prepare_modular_data(args: argparse.Namespace):
-    # modular arithmetic data
-    # X = cartesian product of [0..p] x [0..p]
-    # y = (x1 op x2) % p
-    X = torch.cartesian_prod(torch.arange(args.P), torch.arange(args.P))
-    n_embedding_inputs = X.shape[1]
-    output_map = OrderedDict()
-    for target in args.TARGETS_CLASSIFICATION:
-        output_map[target] = args.P
-    for target in args.TARGETS_REGRESSION:
-        output_map[target] = 1
-
-    y = torch.zeros(X.shape[0], len(output_map))
-    for idx, target in enumerate(output_map):
-        if target == "add":
-            y[:, idx] = (X[:, 0] + X[:, 1]) % args.P
-        elif target == "subtract":
-            y[:, idx] = (X[:, 0] - X[:, 1]) % args.P
-        elif target == "multiply":
-            y[:, idx] = (X[:, 0] * X[:, 1]) % args.P
-        else:
-            raise ValueError(f"Unknown target {target}")
-
-    feature_transformer = RobustScaler()
-    reg_cols = -len(args.TARGETS_REGRESSION)
-    if reg_cols != 0:
-        y[:, reg_cols:] = feature_transformer.fit_transform(y[:, reg_cols:])
-
-    train_mask, test_mask = _train_test_split_sampled(
-        X, args.TRAIN_FRAC, n_embedding_inputs, seed=args.SEED
-    )
-
-    return Data(
-        X.to(args.DEV),
-        y.to(args.DEV),
-        (args.P, args.P),
-        output_map,
-        feature_transformer,
-        train_mask.to(args.DEV),
-        test_mask.to(args.DEV),
+        scaled_idxs,
     )

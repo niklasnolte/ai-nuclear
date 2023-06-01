@@ -1,6 +1,4 @@
-import os
 import tqdm
-import argparse
 import torch
 from torch.utils.data import DataLoader, TensorDataset
 from torch.optim.lr_scheduler import (
@@ -10,7 +8,7 @@ from torch.optim.lr_scheduler import (
     LinearLR,
 )
 from torch.nn import CrossEntropyLoss, MSELoss
-from data import prepare_nuclear_data, prepare_modular_data
+from data import prepare_nuclear_data
 from model import get_model_and_optim
 from loss import rmse, accuracy
 from config import Task
@@ -24,11 +22,11 @@ class Trainer:
         self.problem = problem
         self.args = args
         # prepare data
-        self.data = (
-            prepare_modular_data if problem == Task.MODULAR else prepare_nuclear_data
-        )(args)
+        self.data = prepare_nuclear_data(args)
         # prepare model
-        ms_and_os = [get_model_and_optim(self.data, args) for _ in range(args.N_FOLDS)]
+        ms_and_os = [
+            get_model_and_optim(self.data, args) for idx in range(args.N_FOLDS)
+        ]
         self.models = [m for m, _ in ms_and_os]
         self.optimizers = [o for _, o in ms_and_os]
         self.loaders = [
@@ -64,11 +62,17 @@ class Trainer:
 
     def train(self):
         bar = (tqdm.trange if not self.args.WANDB else range)(self.args.EPOCHS)
-        for _ in bar:
+        for epoch in bar:
+            self.epoch = epoch
             for fold in self.args.WHICH_FOLDS:
                 for x, y in self.loaders[fold]:
                     self.train_step(x, y, fold)
-            self.val_step(log=True)
+            if (
+                epoch % self.args.LOG_FREQ == 0
+                or epoch == self.args.EPOCHS - 1
+                or epoch & (epoch - 1) == 0
+            ):
+                self.val_step()
 
     def train_step(self, X, y, fold):
         self.models[fold].train()
@@ -77,12 +81,13 @@ class Trainer:
         task = X[:, len(self.data.vocab_size) - 1]
         losses, num_samples = self.loss_by_task(task, out, y)
         loss = losses.sum() / num_samples.sum()  # TODO weights?
+        # TODO add grad clipping
         loss.backward()
         self.optimizers[fold].step()
         self.schedulers[fold].step()
         return out, losses, num_samples
 
-    def val_step(self, log=False):
+    def val_step(self):
         # This serves as the logging step as well
         X, y = self.data.X, self.data.y
         task = self.all_tasks
@@ -112,13 +117,8 @@ class Trainer:
         metrics_dict = {}
         for k in metrics_dicts[0].keys():
             metrics_dict[k] = sum(m[k] for m in metrics_dicts) / len(metrics_dicts)
-            metrics_dict[k + "_std"] = (
-                sum((m[k] - metrics_dict[k]) ** 2 for m in metrics_dicts)
-                / len(metrics_dicts)
-            ) ** 0.5
 
-        if log:
-            self.logger.log(metrics_dict)
+        self.logger.log(metrics_dict, self.epoch)
         return metrics_dict
 
     def construct_metrics(self, losses, metrics, num_samples, prefix):
@@ -195,8 +195,8 @@ class Trainer:
         else:
             A = self.data.X[:: self.num_tasks, :2].sum(1).view(-1, 1)
         out = torch.from_numpy(out).to(self.args.DEV)
-        binding_idxs = [i for i, t in enumerate(self.data.output_map) if "binding" in t]
-        out[:, binding_idxs] = out[:, binding_idxs] * (A)
+        # TODO undo all scaling bullshit
+        out[:, self.data.scaled_idxs] = out[:, self.data.scaled_idxs] * A
         return out
 
     @cached_property
@@ -222,7 +222,8 @@ class Trainer:
             return NoScheduler()
         max_steps = args.EPOCHS * len(self.loaders[fold])
         if args.SCHED == "cosine":
-            return CosineAnnealingLR(self.optimizers[fold], max_steps, 1e-5)
+            # TODO use warmup and make indepedent of epochs
+            return CosineAnnealingLR(self.optimizers[fold], max_steps, args.FINAL_LR)
         elif args.SCHED == "onecycle":
             return OneCycleLR(self.optimizers[fold], 1e-3, max_steps)
         elif args.SCHED == "linear":

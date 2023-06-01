@@ -23,7 +23,7 @@ if args.WANDB:
         project=f"ai-nuclear",
         entity="iaifi",
         name=name,
-        notes="debugging tech debt payments",
+        notes="new and great runs",
         tags=["recreate_best_run"],
         group="sysnml_sprint",
         config=vars(args),
@@ -45,5 +45,5 @@ if args.WANDB:
 #         os.remove(os.path.join(basedir, f))
 
 
-if TASK == Task.FULL or TASK == Task.DEBUG or TASK == Task.MODULAR:
+if TASK == Task.FULL:
     train(TASK, args)

@@ -4,7 +4,6 @@ import urllib.request
 import os
 from sklearn.preprocessing import (
     MinMaxScaler,
-    RobustScaler,
 )
 import torch
 import argparse
@@ -106,7 +105,9 @@ def WS4_mass_formula(df):
         df, df_WS4, how="left", left_on=["z", "n"], right_on=["Z", "N"]
     )
 
-    merged_df["WS4"] = Z * mp + N * mn - merged_df["WS4"].astype(float) - A * Da
+    merged_df["WS4"] = (
+        Z * mp + N * mn - merged_df["WS4"].astype(float) - A * Da
+    )
 
     # Create a new column 'WS4' in the merged dataframe and fill it with values from 'WS4' column in df_WS4
     merged_df["WS4"] = merged_df["WS4"].fillna(0)
@@ -248,7 +249,9 @@ def get_targets(df):
     # binding energy per nucleon
     targets["binding"] = get_binding_energy_from(df)
     # binding energy per nucleon minus semi empirical mass formula
-    targets["binding_semf"] = targets.binding - semi_empirical_mass_formula(df.z, df.n)
+    targets["binding_semf"] = targets.binding - semi_empirical_mass_formula(
+        df.z, df.n
+    )
     # binding energy per nucleon minus semi empirical mass formula (including shell effects)
     targets["binding_BW2"] = targets.binding - BW2_mass_formula(df.z, df.n)
     # binding energy per nucleon minus WS4 formula
@@ -282,7 +285,9 @@ def get_targets(df):
     # These are semi-empirical mass formula terms
     targets["volume"] = targets.z + targets.n  # volume
     targets["surface"] = targets.volume ** (2 / 3)  # surface
-    targets["symmetry"] = ((targets.z - targets.n) ** 2) / targets.volume  # symmetry
+    targets["symmetry"] = (
+        (targets.z - targets.n) ** 2
+    ) / targets.volume  # symmetry
     targets["delta"] = delta(targets.z, targets.n)  # delta
     targets["coulomb"] = (targets.z**2 - targets.z) / targets.volume ** (
         1 / 3
@@ -293,7 +298,9 @@ def get_targets(df):
 
 def get_nuclear_data(recreate=False):
     def lc_read_csv(url):
-        req = urllib.request.Request("https://nds.iaea.org/relnsd/v0/data?" + url)
+        req = urllib.request.Request(
+            "https://nds.iaea.org/relnsd/v0/data?" + url
+        )
         req.add_header(
             "User-Agent",
             "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:77.0) Gecko/20100101 Firefox/77.0",
@@ -336,9 +343,9 @@ def _train_test_split(size, n_folds, X, seed=1):
     all_zs = X[:, 0]
     all_ns = X[:, 1]
     while True:
-        train_idx = torch.repeat_interleave(torch.arange(n_folds), size // n_folds + 1)[
-            :size
-        ]
+        train_idx = torch.repeat_interleave(
+            torch.arange(n_folds), size // n_folds + 1
+        )[:size]
         train_idx = train_idx[torch.randperm(size)]
         train_masks = [train_idx != i for i in range(n_folds)]
         for train_mask in train_masks:
@@ -357,13 +364,17 @@ def _leave_one_plus_four_out(X, train_masks, val_masks, output_map, seed=1):
     # data that is too correlated with the validation data
     # so for each Sn, Sp target, we remove the M of all ajacent nuclei
     # and for M, we remove the Sp and Sn of all ajacent nuclei
-    binding_idx = [i for i, x in enumerate(output_map.keys()) if "binding" in x]
+    binding_idx = [
+        i for i, x in enumerate(output_map.keys()) if "binding" in x
+    ]
     sn_idx = [i for i, x in enumerate(output_map.keys()) if "sn" in x]
     sp_idx = [i for i, x in enumerate(output_map.keys()) if "sp" in x]
 
-    assert len(binding_idx) == 1
-    assert len(sn_idx) == 1
-    assert len(sp_idx) == 1
+    if len(binding_idx) & (len(sn_idx) ^ len(sp_idx)):
+        raise ValueError("sn and sp must be both present or both absent")
+    elif ~(len(sn_idx) & len(sp_idx) & len(binding_idx)):
+        print("No sn, sp or binding data, skipping leave one out")
+        return train_masks
 
     binding_idx = binding_idx[0]
     sn_idx = sn_idx[0]
@@ -427,7 +438,9 @@ def prepare_nuclear_data(config: argparse.Namespace, recreate: bool = False):
     returns (Data): namedtuple of X, y, vocab_size, output_map, quantile_transformer
     """
     df = get_nuclear_data(recreate=recreate)
-    df = df[(df.z > config.INCLUDE_NUCLEI_GT) & (df.n > config.INCLUDE_NUCLEI_GT)]
+    df = df[
+        (df.z > config.INCLUDE_NUCLEI_GT) & (df.n > config.INCLUDE_NUCLEI_GT)
+    ]
     targets = get_targets(df)
 
     X = torch.tensor(targets[["z", "n"]].values)
@@ -464,7 +477,11 @@ def prepare_nuclear_data(config: argparse.Namespace, recreate: bool = False):
 
     # Time to flatten everything
     X = torch.vstack(
-        [torch.tensor([*x, task]) for x in X for task in torch.arange(len(output_map))]
+        [
+            torch.tensor([*x, task])
+            for x in X
+            for task in torch.arange(len(output_map))
+        ]
     )
     y = y.flatten().view(-1, 1)
     train_masks, test_masks = _train_test_split(
@@ -472,8 +489,12 @@ def prepare_nuclear_data(config: argparse.Namespace, recreate: bool = False):
     )
 
     # scale those by A
-    binding_idxs = [i for i, x in enumerate(output_map.keys()) if "binding" in x]
-    scaled_idxs = [sum(list(output_map.values())[:idx]) for idx in binding_idxs]
+    binding_idxs = [
+        i for i, x in enumerate(output_map.keys()) if "binding" in x
+    ]
+    scaled_idxs = [
+        sum(list(output_map.values())[:idx]) for idx in binding_idxs
+    ]
 
     # don't consider nuclei with high uncertainty in binding energy
     # but only for validation

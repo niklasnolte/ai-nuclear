@@ -8,6 +8,7 @@ from data import Data
 from monotonenorm.functional import direct_norm
 import os
 
+
 class RNN(nn.Module):
     def __init__(
         self,
@@ -23,15 +24,25 @@ class RNN(nn.Module):
         self.hidden_dim = hidden_dim
         self.proton_emb = torch.nn.init.kaiming_uniform_(torch.empty(1, hidden_dim))
         self.neutron_emb = torch.nn.init.kaiming_uniform_(torch.empty(1, hidden_dim))
-        self.task_emb = torch.nn.init.kaiming_uniform_(torch.empty(vocab_size[-1], hidden_dim))
+        self.task_emb = torch.nn.init.kaiming_uniform_(
+            torch.empty(vocab_size[-1], hidden_dim)
+        )
         self.proton_emb = nn.Parameter(self.proton_emb)
         self.neutron_emb = nn.Parameter(self.neutron_emb)
         self.task_emb = nn.Parameter(self.task_emb)
 
         self.protonet = nn.Sequential(
-            *[ResidualBlock(hidden_dim, activation=nn.SiLU(), dropout=dropout) for _ in range(depth)])
+            *[
+                ResidualBlock(hidden_dim, activation=nn.SiLU(), dropout=dropout)
+                for _ in range(depth)
+            ]
+        )
         self.neutronet = nn.Sequential(
-            *[ResidualBlock(hidden_dim, activation=nn.SiLU(), dropout=dropout) for _ in range(depth)])
+            *[
+                ResidualBlock(hidden_dim, activation=nn.SiLU(), dropout=dropout)
+                for _ in range(depth)
+            ]
+        )
         self.nonlinear = nn.Sequential(
             nn.Linear(hidden_dim * 2, hidden_dim),
             nn.SiLU(),
@@ -41,11 +52,11 @@ class RNN(nn.Module):
 
     def _protons(self, n):
         p = self.proton_emb
-        return torch.vstack([(p:=self.protonet(p)) for _ in range(n+1)])
+        return torch.vstack([(p := self.protonet(p)) for _ in range(n + 1)])
 
     def _neutrons(self, n):
         p = self.neutron_emb
-        return torch.vstack([(p:=self.neutronet(p)) for _ in range(n+1)])
+        return torch.vstack([(p := self.neutronet(p)) for _ in range(n + 1)])
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         p_max, n_max = x[:, 0].amax(), x[:, 1].amax()
@@ -136,6 +147,7 @@ class BaselineModel(Base):
         output_dim: int,
         depth: int = 2,
         lipschitz: bool = False,
+        dropout: float = 0.0,
     ):
         """
         :param vocab_size: number of tokens in the vocabulary,
@@ -151,7 +163,7 @@ class BaselineModel(Base):
             nn.Linear(self.input_dim, hidden_dim),
             nn.SiLU(),
             *[
-                ResidualBlock(hidden_dim, norm=norm, activation=act)
+                ResidualBlock(hidden_dim, norm=norm, activation=act, dropout=dropout)
                 for _ in range(depth)
             ],
         )
@@ -161,6 +173,7 @@ class BaselineModel(Base):
         x = self.embed_input(x, embs)
         x = self.nonlinear(x)  # [ batch_size, hidden_dim ]
         return torch.sigmoid(self.readout(x))  # [ batch_size, output_dim ]
+
 
 def get_model_fn(config):
     if config.MODEL == "baseline":
@@ -234,7 +247,7 @@ def make_mup(model_fn: Callable, shape_file=None, **scale_kwargs) -> nn.Module:
     for name, param in model.named_parameters():
         if "weight" in name.lower() or "emb" in name.lower():  # FIXME or not
             # mup.init.uniform_(param, -.1, .1)
-            mup.kaiming_uniform_(param, a=5.**0.5, nonlinearity="leaky_relu")
+            mup.kaiming_uniform_(param, a=5.0**0.5, nonlinearity="leaky_relu")
     return model
 
 

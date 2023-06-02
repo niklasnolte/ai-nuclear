@@ -1,6 +1,6 @@
 models
 __pycache__
-data
+data/ground_states.csv
 .snakemake
 wandb
 .vscode

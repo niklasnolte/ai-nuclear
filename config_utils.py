@@ -2,6 +2,7 @@ from collections.abc import Iterable
 import argparse
 import socket
 
+
 def where_am_i():
     host = socket.gethostname()
 
@@ -15,7 +16,7 @@ def where_am_i():
 
 def _serialize_dict(targets: dict) -> str:
     if targets == {}:
-      return "None"
+        return "None"
     return "-".join([f"{k}:{v}" for k, v in targets.items()])
 
 
@@ -24,6 +25,11 @@ def _deserialize_dict(targets: str) -> dict:
         return {}
     return {k: float(v) for k, v in [t.split(":") for t in targets.split("-")]}
 
+def _serialize_list(targets: list) -> str:
+    return "-".join([str(t) for t in targets])
+
+def _deserialize_list(targets: str) -> list:
+    return [float(t) for t in targets.split("-")]
 
 def serialize_elements_in_task(task: dict):
     """
@@ -34,9 +40,11 @@ def serialize_elements_in_task(task: dict):
             raise ValueError(
                 f"{t} is not iterable in your config, fix in Enum Task (config.py)"
             )
-        for i,choice in enumerate(choices):
+        for i, choice in enumerate(choices):
             if isinstance(choice, dict):
                 task[t][i] = _serialize_dict(choice)
+            elif isinstance(choice, list):
+                task[t][i] = _serialize_list(choice)
     return task
 
 
@@ -44,12 +52,30 @@ def _args_postprocessing(args: argparse.Namespace):
     # make them dicts again
     args.TARGETS_CLASSIFICATION = _deserialize_dict(args.TARGETS_CLASSIFICATION)
     args.TARGETS_REGRESSION = _deserialize_dict(args.TARGETS_REGRESSION)
+    args.WHICH_FOLDS = [int(x) for x in _deserialize_list(args.WHICH_FOLDS)]
 
     # log freq
     if args.CKPT_FREQ == -1:
         # only log last
         args.CKPT_FREQ = args.EPOCHS + 1
     return args
+
+
+def _add_operational_args_(parser: argparse.ArgumentParser):
+    parser.add_argument("--DEV", type=str, default="cpu", help="device to use")
+    parser.add_argument(
+        "--WANDB", action="store_true", default=False, help="use wandb or not"
+    )
+    parser.add_argument(
+        "--ROOT", type=str, default="./results", help="root folder to store models"
+    )
+    parser.add_argument("--LOG_FREQ", type=int, default=1, help="log every n epochs")
+    parser.add_argument(
+        "--CKPT_FREQ",
+        type=int,
+        default=-1,
+        help="save checkpoint every n epochs, -1 == only log the last",
+    )
 
 
 def _parse_arguments(task):
@@ -60,12 +86,8 @@ def _parse_arguments(task):
             f"--{k}", type=type(v[0]), default=v[0]
         )  # TODO review float
 
+    _add_operational_args_(parser)  # add operational args
     # operations params
-    parser.add_argument("--DEV", type=str, default="cpu", help="device to use")
-    parser.add_argument("--WANDB", action="store_true", default=False, help="use wandb or not")
-    parser.add_argument("--ROOT", type=str, default="./results", help="root folder to store models")
-    parser.add_argument("--LOG_FREQ", type=int, default=100, help="log every n epochs")
-    parser.add_argument("--CKPT_FREQ", type=int, default=-1, help="save checkpoint every n epochs, -1 == only log the last")
     return parser.parse_args()
 
 

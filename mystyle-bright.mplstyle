@@ -3,7 +3,7 @@ patch.edgecolor: black
 
 text.usetex : False
 text.color: black
-font.serif: Computer Modern Roman #Bitstream Vera Serif
+font.serif: DejaVu Serif
 font.family: serif #sans-serif
 
 axes.facecolor: white #light gray eeeeee

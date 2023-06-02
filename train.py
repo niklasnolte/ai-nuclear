@@ -5,34 +5,23 @@ from config_utils import parse_arguments_and_get_name
 from train_full import train
 
 # load TASK from env
-TASK = Task[os.environ.get("TASK")]
+TASK = Task[os.environ["TASK"]]
 
 args, name = parse_arguments_and_get_name(TASK)
+args.name = name
 torch.manual_seed(args.SEED)
 
 # paths and names
-basedir = os.path.join(args.ROOT, name)
-os.makedirs(basedir, exist_ok=True)
+args.basedir = os.path.join(args.ROOT, name)
+os.makedirs(args.basedir, exist_ok=True)
 print(f"training run for {name}")
-
-# bookkeeping
-if args.WANDB:
-    import wandb
-    wandb.init(project=f"ai-nuclear", entity="iaifi", name=name, notes="testing 1024 width", tags=["testing"], config=vars(args))
-    wandb.save("train.py")
-    wandb.save("config.py")
-    wandb.save("config_utils.py")
-    wandb.save("loss.py")
-    wandb.save("model.py")
-    wandb.save("data.py")
-    wandb.save("train_full.py")
 
 # remove old models
 # FIXME should we really do that?
-for f in os.listdir(basedir):
-    if f.endswith(".pt"):
-        os.remove(os.path.join(basedir, f))
+# for f in os.listdir(basedir):
+#     if f.endswith(".pt"):
+#         os.remove(os.path.join(basedir, f))
 
 
-if TASK == Task.FULL or TASK == Task.DEBUG or TASK == Task.MODULAR:
-    train(TASK, args, basedir)
+if TASK == Task.FULL:
+    train(TASK, args)

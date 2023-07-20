@@ -43,7 +43,7 @@ class ResModel(nn.Module):
         x = self.readout(x)
         return x
 
-def train(modelclass, function_dict, lr, wd, basepath, device, title, embed_dim = 64, seed = 1, test_size = 0.2):
+def train(modelclass, function_dict, lr, wd, basepath, device, title, embed_dim = 64, seed = 1, test_size = 0.2, batch_size = 100):
   #train just for modular arithmetic
   torch.manual_seed(seed)
   os.makedirs(basepath, exist_ok=True)
@@ -57,7 +57,7 @@ def train(modelclass, function_dict, lr, wd, basepath, device, title, embed_dim 
 
   all_a = torch.tensor(list(range(vocab_size[0]))).to(device)
 
-  train_loader = DataLoader(TensorDataset(X_train, y_train), batch_size=100, shuffle=True)
+  train_loader = DataLoader(TensorDataset(X_train, y_train), batch_size=batch_size, shuffle=True)
   model = modelclass(functions, embed_dim).to(device)
 
   loss_fn = nn.MSELoss()
@@ -128,28 +128,26 @@ def effective_dim(model, all_a):
     entropy = torch.exp(entropy_a)
     return entropy
 
-def run_model(functions, wd = 1e-2, lr = 1e-4, test_size = 0.05):
+def run_model(functions, wd = 1e-2, lr = 1e-4, test_size = 0.95, batch_size = 4):
     # takes 1d list of functions and runs
     all_fn_dict = config.all_fn_dict
     all_fn_list = list(all_fn_dict.keys())
     fn_list = [all_fn_list[j] for j in functions]
     fn_dict = {k: all_fn_dict[k] for k in fn_list}
-    print(fn_dict)
 
     fn_name = ''.join([str(functions[i]) for i in range(len(functions))])
-    name = f'ResModel_fn{fn_name}_ts{test_size}_wd{wd}_lr{lr}'
-    print(name)
-    train(ResModel, fn_dict, lr, wd, f'models/ResModel/{name}/', 'cuda', name, test_size = test_size)
+    name = f'ResModel_fn{fn_name}_ts{test_size}_wd{wd}_lr{lr}_batch{batch_size}'
+    train(ResModel, fn_dict, lr, wd, f'models/ResModel/{name}/', 'cuda', name, test_size = test_size, batch_size = batch_size)
 
 
-def run_models(function_list, wd = 1e-2, lr = 1e-4, test_size = 0.05):
+def run_models(function_list, wd = 1e-3, lr = 1e-4, test_size = 0.95, batch_size = 4):
     #2d list of function_list
     for fn_list in function_list:
-        run_model(fn_list, wd, lr, test_size)
+        run_model(fn_list, wd, lr, test_size, batch_size)
 
 
 
 if __name__ == "__main__":
-    functions = [[1,2], [2,3], [3,4], [4,0], [0,1,2], [0,1,2,3]]
+    functions = [[0,1,2,3,4], [0,1,2,3], [0,1,2], [0,1], [0]]
     run_models(functions)
     

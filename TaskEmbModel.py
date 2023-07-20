@@ -53,12 +53,36 @@ class TaskEmbModel(nn.Module):
         return output.view(-1,1)
     def __str__(self):
         return 'TaskEmbModel'
+
+class CustomCosineAnnealingLR(torch.optim.lr_scheduler._LRScheduler):
+    def __init__(self, optimizer, T_max, stop_frac = 0.7, eta_min=0, last_epoch=-1):
+        self.T_max = T_max
+        self.final_cos_epoch = stop_frac*self.T_max
+        self.eta_min = eta_min
+        super(CustomCosineAnnealingLR, self).__init__(optimizer, last_epoch)
+
+    def get_cos_value(self, base_lr, epoch):
+        return self.eta_min + (base_lr - self.eta_min) * (1 + math.cos(math.pi * epoch / self.T_max)) / 2
     
-def train(modelclass, function_dict, title, basepath, lr, wd, device = 'cuda', hidden_dim = 64, seed = 1, test_size = 0.1, batch_size = 100, num_layers = 2, optim = Adam, num_epochs = 1000):
+    def get_lr(self):
+        if self.last_epoch > self.final_cos_epoch: # constant lr
+            return [self.get_cos_value(base_lr, self.final_cos_epoch) for base_lr in self.base_lrs] 
+        else: # cosine annealing
+            return [self.get_cos_value(base_lr, self.last_epoch) for base_lr in self.base_lrs]
+
+class ConstantLearningRate(torch.optim.lr_scheduler._LRScheduler):
+    def __init__(self, optimizer, last_epoch=-1):
+        super(ConstantLearningRate, self).__init__(optimizer, last_epoch)
+
+    def get_lr(self):
+        return [group['lr'] for group in self.optimizer.param_groups]
+    
+def train(modelclass, function_dict, title, basepath, lr, wd, device = 'cuda', hidden_dim = 64, seed = 1, train_size = 0.1, batch_size = 100, num_layers = 2, optim = Adam, num_epochs = 1000, stop_frac = 0.7):
   #train just for modular arithmetic
   torch.manual_seed(seed)
   os.makedirs(basepath, exist_ok=True)
   functions = list(function_dict.values())
+  test_size = 1-train_size
   X_train, X_test, y_train, y_test, vocab_size = get_data_nomod_difftasks(functions, test_size = test_size, seed = seed) 
 
   X_train = X_train.to(device)
@@ -69,15 +93,33 @@ def train(modelclass, function_dict, title, basepath, lr, wd, device = 'cuda', h
   all_a = torch.tensor(list(range(vocab_size[0]))).to(device)
 
   train_loader = DataLoader(TensorDataset(X_train, y_train), batch_size=batch_size*len(functions), shuffle=True)
-  model = modelclass(functions,hidden_dim = hidden_dim, num_layers = num_layers).to(device)
-
+  
   loss_fn = nn.MSELoss()
-  optimizer = optim(model.parameters(), lr=lr, weight_decay=wd)
   bar = tqdm.tqdm(range(num_epochs))
-  scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, num_epochs * len(train_loader))
-  lowest_loss = 1e10
 
   data_dict = None
+  model = modelclass(functions,hidden_dim = hidden_dim, num_layers = num_layers).to(device)
+
+  optimizer = optim(model.parameters(), lr=lr, weight_decay=wd)
+  scheduler = CustomCosineAnnealingLR(optimizer, 1500*len(functions), stop_frac=stop_frac)
+  if False:#os.path.exists(basepath):
+    #model = torch.load(basepath+'model.pt')
+    model.load_state_dict(torch.load(basepath+'best.pt'))
+    model = model.to(device)
+
+    data_df = pd.read_csv('csv/'+title+'.csv')
+    data_dict = data_df.to_dict(orient = 'list')
+    del data_dict['Unnamed: 0']
+
+    new_lr = scheduler.get_cos_value(lr, num_epochs)
+    print(new_lr, 'newlr')
+    optimizer = optim(model.parameters(), lr=new_lr, weight_decay=wd)
+    scheduler = ConstantLearningRate(optimizer)
+
+  #scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, num_epochs * len(train_loader))
+  
+  lowest_loss = 1e10
+
 
   torch.autograd.set_detect_anomaly(True)
 
@@ -163,7 +205,7 @@ def run_models(function_list, wd = 1e-3, lr = 1e-4, test_size = 0.95, batch_size
         run_model(fn_list, wd, lr, test_size, batch_size)
 
 
-def random_search_parameters(modelclass,functions, train_function,all = False, param_list = None):
+def random_search_parameters(modelclass,functions, train_function, param_grid = None, all = False, param_list = None):
     # param_grid = {
     #     'hidden_dim': [32, 64, 128],
     #     'num_layers': [1, 2, 3],
@@ -174,18 +216,7 @@ def random_search_parameters(modelclass,functions, train_function,all = False, p
     #     'modelclass': [TaskEmbModel],
     #     'functions': [[0]]
     # }
-    param_grid = {
-        'lr': [1e-5],
-        'optimizer': [Adam],
-        'hidden_dim': [64, 128],
-        'num_layers': [1, 2],
-        'batch_size': [16, 32],
-        'wd': [0.0],
-        'modelclass': [modelclass],
-        'functions': [functions],
-        'num_epochs': [500]
-        }
-    
+        
     num_combinations = np.prod([len(v) for v in param_grid.values()])
     if all:
         num_trials = num_combinations
@@ -195,12 +226,15 @@ def random_search_parameters(modelclass,functions, train_function,all = False, p
     print('total num parameters', num_combinations)
     print('num_trials', num_trials)
     param_list = list(ParameterSampler(param_grid, n_iter=num_trials))
-    for params in param_list:
+    for count, params in enumerate(param_list):
         metrics = run_params(train_function, params)
-        
+        dir = metrics['dir']
+        del metrics['dir']
 
+        print(f'num {count} of {num_trials} trials')
 
         path = f'csv/{dir}.csv'
+        print(path)
         if os.path.exists(path):
             df = pd.read_csv(path)
             df = df.drop(columns=['Unnamed: 0'])
@@ -224,25 +258,29 @@ def run_params(train_function, params):
     function_dict = {k: all_fn_dict[k] for k in fn_list}
     fn_name = ''.join([str(functions[i]) for i in range(len(functions))])
 
-    dir = f'{model_str}_{fn_name}_random_search'
+    dir = f'{model_str}_{fn_name}_{config.LIMIT}lim_ts_random_search'
 
     
     hidden_dim = params['hidden_dim']
     num_layers = params['num_layers']
     lr = params['lr']
+    ts = params['ts']
     optimizer = params['optimizer']
     batch_size = params['batch_size']
     wd = params['wd']
     epochs = params['num_epochs']
+    seed = params['seed']
+    stop_frac = params['stop_frac']
     
-    dir = f'{model_str}_{fn_name}_random_search'
-    title = f'{model_str}_fn{fn_name}_hd{hidden_dim}_nl{num_layers}_opt{optimizer.__name__}_bs{batch_size}__lr{lr}_wd{wd}_epochs{epochs}_cos'
+
+    title = f'{model_str}_fn{fn_name}_hd{hidden_dim}_nl{num_layers}_opt{optimizer.__name__}_bs{batch_size}__lr{lr}_wd{wd}_epochs{epochs}_seed{seed}_{config.LIMIT}lim_ts{ts}_{stop_frac}cos'
     basepath = f'models/{dir}/{title}/'
-    print(title)
+    print('title', title)
     metrics = train_function(modelclass=modelclass, 
             function_dict=function_dict, 
             lr=lr, 
-            wd=wd, 
+            wd=wd,
+            train_size=ts,
             basepath=basepath, 
             device='cuda', 
             title=title, 
@@ -250,9 +288,11 @@ def run_params(train_function, params):
             hidden_dim=hidden_dim,
             num_layers=num_layers,
             optim=optimizer,
-            num_epochs=epochs)
+            num_epochs=epochs,
+            seed = seed,
+            stop_frac = stop_frac)
     metrics['title'] = title
-    print(title, basepath)
+    metrics['dir'] = dir
     return metrics
 
 
@@ -260,7 +300,36 @@ def run_params(train_function, params):
 
 
 if __name__ == "__main__":
-    functions = [[0,1,2,3,4], [0,1,2,3], [0,1,2], [0,1], [0]]
-    #run_models(functions)
+    functions = [0,1,2,3,4]
+    modelclass = TaskEmbModel
 
-    
+   #i want to continue training this one
+   #TaskEmbModel_fn01234_hd128_nl2_optAdam_bs4__lr0.0001_wd0.01_epochs10000_seed1_20lim_ts0.1_0.5cos
+    param_grid = {
+    'lr': [1e-4],
+     'optimizer': [Adam],
+     'hidden_dim': [128],
+     'num_layers': [2][::-1],
+     'batch_size': [4][::-1],
+     'wd': [1e-3],
+     'num_epochs': [10000][::-1],
+     'functions': [functions],
+     'seed': [1],
+     'ts': [0.11],
+     'modelclass': [modelclass],
+     'stop_frac':[0.5][::-1]
+    }
+    random_search_parameters(modelclass, functions, train, param_grid = param_grid, all = True)
+
+    # param_grid = {'lr': [1e-4, 5e-5],
+    #  'optimizer': [Adam],
+    #  'hidden_dim': [256],
+    #  'num_layers': [7, 8][::-1],
+    #  'batch_size': [16, 32],
+    #  'wd': [1e-4],
+    #  'num_epochs': [1500],
+    #  'functions': [functions],
+    #  'seed': [1],
+    #  'modelclass': [modelclass]
+    # }
+    # random_search_parameters(modelclass, functions, train, param_grid = param_grid, all = True)

@@ -9,6 +9,7 @@ from utils import functions_to_names, run_models
 #from train import train
 from TaskEmbModel import ResidualBlock,  random_search_parameters, train, TaskEmbModel, run_params
 import re
+from torch.optim import Adam, SGD, RMSprop
 
 
 config = Config()
@@ -85,7 +86,7 @@ def run_best_models():
 
 
 if __name__ == '__main__':
-  run_best_models()
+  #run_best_models()
   # title = 'BaselineModel_fn01234_hd64_nl1_optAdam_bs16__lr1e-05_wd0.0'
   # params = extract_params_from_title(title)
   # params['modelclass'] = BaselineModel
@@ -94,4 +95,25 @@ if __name__ == '__main__':
   # params['optimizer'] = torch.optim.Adam
   # run_params(train, params)
   #run_best_models()
-  #random_search_parameters(BaselineModel, [0,1,2,3,4], train)
+  modelclass = BaselineModel
+  # continuing this run BaselineModel_fn01234_hd128_nl2_optAdam_bs4__lr0.0001_wd0.05_epochs10000_seed1_20lim_ts0.1_0.5cos
+  #all_functions = [[0],[1]]
+  all_functions = [[3], [4]]
+  #all_functions = [[0,1,2,3,4]]
+  
+  for functions in all_functions:
+    param_grid = {
+      'lr': [1e-4],
+      'optimizer': [Adam],
+      'hidden_dim': [128],
+      'num_layers': [2][::-1],
+      'batch_size': [4],
+      'wd': [1e-1], # CHANGE FOR INDIVIDUAL RUNS
+      'num_epochs': [10000],
+      'functions': [functions],
+      'seed': [1],
+      'ts': [0.11],
+      'modelclass': [modelclass],
+      'stop_frac': [0.5]
+      }
+    random_search_parameters(modelclass, functions, train, param_grid = param_grid, all = True)

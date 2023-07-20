@@ -1,4 +1,4 @@
-from BasicModel import BasicModel
+from BaselineModel import BasicModel
 import torch
 from torch import nn
 import matplotlib.pyplot as plt

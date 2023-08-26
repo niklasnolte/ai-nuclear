@@ -10,6 +10,8 @@ def where_am_i():
         return "MIT"
     elif host.endswith("harvard.edu") or host.startswith("holygpu"):
         return "HARVARD"
+    elif "fair" in host or "learnlab" in host:
+        return "FAIR"
     else:
         Warning(f"Unknown cluster: {host}")
         return "Local"
@@ -78,10 +80,9 @@ def _add_operational_args_(parser: argparse.ArgumentParser):
     )
 
 
-def _parse_arguments(task):
+def _parse_arguments(params):
     parser = argparse.ArgumentParser()
-    hyperparams = task.value
-    for k, v in hyperparams.items():
+    for k, v in params.items():
         parser.add_argument(
             f"--{k}", type=type(v[0]), default=v[0]
         )  # TODO review float
@@ -107,8 +108,8 @@ def _get_qualified_name(task, args):
 def get_name(task):
     name = "/".join(
         [
-            f"{task.name}",
-            *[_make_suffix_for(hp) for hp in task.value.keys()],
+            "NUCLR",
+            *[_make_suffix_for(hp) for hp in task.keys()],
         ]
     )
     return name

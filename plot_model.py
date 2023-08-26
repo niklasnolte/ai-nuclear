@@ -1,21 +1,16 @@
 import torch
-from data import prepare_nuclear_data, prepare_modular_data
-from config import Task
+from data import prepare_nuclear_data
+from config import NUCLR
 import matplotlib.pyplot as plt
 from model import get_model_and_optim
 from config_utils import parse_arguments_and_get_name
 import os
 
-# load TASK from env
-TASK = Task[os.environ.get("TASK")]
 
-args, name = parse_arguments_and_get_name(TASK)
+args, name = parse_arguments_and_get_name(NUCLR)
 torch.manual_seed(args.SEED)
 
-if TASK == Task.FULL or TASK == Task.DEBUG:
-    data = prepare_nuclear_data(args)
-elif TASK == Task.MODULAR:
-    data = prepare_modular_data(args)
+data = prepare_nuclear_data(args)
 
 print(args)
 
@@ -24,7 +19,7 @@ def load(path):
 
 
 basedir = os.path.join(args.ROOT, name)
-modelpath = os.path.join(basedir, "model_FULL_best.pt")
+modelpath = os.path.join(basedir, "model_NUCLR_best.pt")
 model, _ = get_model_and_optim(data, args)
 model.load_state_dict(load(modelpath))
 model.eval()

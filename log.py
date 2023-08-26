@@ -17,16 +17,16 @@ class Logger:
             if args.WANDB:
                 self.wandb = True
                 n_params = sum(p.numel() for p in models[0].parameters())
-                wandb.config.update({"n_params": n_params})
                 wandb.init(
-                    project="ai-nuclear",
+                    project="NuCLR",
                     entity="iaifi",
                     name=args.name,
                     notes="new and great runs",
-                    tags=["recreate_best_run"],
-                    group="sysnml_sprint",
+                    tags=["Aug23"],
+                    group="ICML23",
                     config=dict(vars(args)),
                 )
+                wandb.config.update({"n_params": n_params})
                 wandb.save("train.py")
                 wandb.save("config.py")
                 wandb.save("config_utils.py")
@@ -39,7 +39,7 @@ class Logger:
             else:
                 self.wandb = False
         else:
-    
+
             self.basedir = None
         self.best_loss = float("inf")
         self._defined_metrics = None

@@ -1,12 +1,14 @@
+import os
 import torch
 from torch import nn
 from functools import partial
 import mup
 import warnings
-from typing import Callable, Iterable, Optional, Tuple, Union, List
+from typing import Callable, Optional, List
 from data import Data
 from monotonenorm.functional import direct_norm
-import os
+from .modules import PeriodicEmbedding
+
 
 
 class RNN(nn.Module):
@@ -84,10 +86,10 @@ class Base(nn.Module):
         self.input_dim = self.embedding_dim * len(vocab_size) + non_embedded_input_dim
         # we are using weights here because that is more convenient for dimn_regularization
         if share_embeddings:
-            self.emb = nn.Embedding(vocab_size[0], self.embedding_dim).weight
+            self.emb = nn.Embedding(vocab_size[0], self.embedding_dim)
         else:
-            self.emb = nn.ParameterList(
-                [nn.Embedding(v, self.embedding_dim).weight for v in self.vocab_size]
+            self.emb = nn.ModuleList(
+                [nn.Embedding(v, self.embedding_dim) for v in self.vocab_size]
             )
         self.hidden_dim = hidden_dim
 
@@ -101,9 +103,9 @@ class Base(nn.Module):
 
     def embed_input(self, x, embs):
         if self.share_embeddings:
-            embs = [embs[x[:, i].long()] for i, _ in enumerate(self.vocab_size)]
+            embs = [embs(x[:, i].long()) for i, _ in enumerate(self.vocab_size)]
         else:
-            embs = [embs[i][x[:, i].long()] for i, _ in enumerate(self.vocab_size)]
+            embs = [embs[i](x[:, i].long()) for i, _ in enumerate(self.vocab_size)]
         if self.non_embedded_input_dim > 0:
             embs.append(x[:, len(self.vocab_size) :])
         return torch.cat(embs, dim=1)  # [ batch_size, 2 * hidden_dim ]
@@ -174,15 +176,90 @@ class BaselineModel(Base):
         x = self.nonlinear(x)  # [ batch_size, hidden_dim ]
         return torch.sigmoid(self.readout(x))  # [ batch_size, output_dim ]
 
+class PeriodicEmbeddingModel(BaselineModel):
+    def __init__(
+        self,
+        vocab_size: List[int],
+        non_embedded_input_dim: int,
+        hidden_dim: int,
+        output_dim: int,
+        depth: int = 2,
+        lipschitz: bool = False,
+        dropout: float = 0.0,
+    ):
+      super().__init__(vocab_size, non_embedded_input_dim, hidden_dim, output_dim, depth, lipschitz, dropout)
+      for i in range(2):
+          self.emb[i] = PeriodicEmbedding(hidden_dim)
+
+
+class NZIntModel(nn.Module):
+    def __init__(
+        self,
+        vocab_size: List[int],
+        non_embedded_input_dim: int,
+        hidden_dim: int,
+        output_dim: int,
+        depth: int = 2,
+        lipschitz: bool = False,
+        dropout: float = 0.0,
+    ):
+        """
+        :param vocab_size: number of tokens in the vocabulary,
+          or an Iterable of vocab sizes for each input. One embedding layer will be created for each input.
+        :param hidden_dim: dimension of the hidden layer
+        :param output_dim: dimension of the output layer
+        """
+        # in this model N and Z are non embedded inputs!
+        super().__init__()
+        if non_embedded_input_dim != 0:
+            raise NotImplementedError()
+        self.vocab_size = vocab_size
+        self.n_tasks = vocab_size[-1]
+        norm = direct_norm if lipschitz else (lambda x: x)
+        act = nn.ReLU()
+        task_embedding_dim = 2
+        self.task_embedding = nn.Embedding(self.n_tasks, task_embedding_dim)
+        self.protonet = nn.Sequential(
+            nn.Linear(1, hidden_dim),
+            nn.SiLU(),
+            ResidualBlock(hidden_dim, norm=norm, activation=act, dropout=dropout)
+        )
+        self.neutronet = nn.Sequential(
+            nn.Linear(1, hidden_dim),
+            nn.SiLU(),
+            ResidualBlock(hidden_dim, norm=norm, activation=act, dropout=dropout)
+        )
+        self.nonlinear = nn.Sequential(
+            nn.Linear(hidden_dim*2 + task_embedding_dim, hidden_dim),
+            nn.SiLU(),
+            *[
+                ResidualBlock(hidden_dim, norm=norm, activation=act, dropout=dropout)
+                for _ in range(depth)
+            ],
+        )
+        self.readout = norm(nn.Linear(hidden_dim, output_dim))
+
+    def forward(self, x):  # embs: [ batch_size, 2 * hidden_dim ]
+        protons = self.protonet(x[:, [0]]/self.vocab_size[0])
+        neutrons = self.neutronet(x[:, [1]]/self.vocab_size[1])
+        tasks = self.task_embedding(x[:, 2])
+        x = torch.cat([protons, neutrons, tasks], dim=1)
+        x = self.nonlinear(x)  # [ batch_size, hidden_dim ]
+        return torch.sigmoid(self.readout(x))  # [ batch_size, output_dim ]
+
 
 def get_model_fn(config):
     if config.MODEL == "baseline":
         return BaselineModel
     elif config.MODEL == "rnn":
         return RNN
+    elif config.MODEL == "NZInt":
+        return NZIntModel
+    elif config.MODEL == "PeriodicEmb":
+        return PeriodicEmbeddingModel
     else:
         raise ValueError(
-            f"Unknown model: {config.MODEL}, choose between 'baseline', 'splitup', 'transformer' and 'moe'"
+            f"Unknown model: {config.MODEL}, choose between 'baseline', 'rnn', 'NZInt', 'PeriodicEmb'"
         )
 
 
@@ -254,10 +331,7 @@ def make_mup(model_fn: Callable, shape_file=None, **scale_kwargs) -> nn.Module:
 def get_model_and_optim(data: Data, config):
     torch.manual_seed(config.SEED)
     # set up model
-    if config.MODEL == "splitup" or config.MODEL == "transformer":
-        output_dim = list(data.output_map.values())
-    else:
-        output_dim = sum(data.output_map.values())
+    output_dim = sum(data.output_map.values())
 
     model_fn = get_model_fn(config)
     model_fn = partial(

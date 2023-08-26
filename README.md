@@ -3,15 +3,15 @@ There are 3 ways to run this pipeline, depending on how many jobs you want to ru
 ## Single run
 A single run (interactively) to test a single configuration.
 All configuration lives in `config.py`.
-To run, choose as task from the Task enum in `config.py`, for instance `FULL`. (At the moment of writing this `FULL` is the only option available).
-Then you can run a default run with `TASK=FULL python train.py`.
+To run, choose as task from the Task enum in `config.py`, for instance `NUCLR`. (At the moment of writing this `NUCLR` is the only option available).
+Then you can run a default run with `TASK=NUCLR python train.py`.
 
 The configurable parameters are defined in the tasks dict (again in `config.py`).
 Each Element in the dict has a key, which is the name of the configurable (for instance `LR`)
 and a list of values. The first value is the default. The rest of the values are not
 used for a single run, see the Snakemake section.
 You can change any of those default parameters by providing `--key=new_value` to your run command,
-e.g. `TASK=FULL python train.py --LR=1e-3`.
+e.g. `TASK=NUCLR python train.py --LR=1e-3`.
 By default, model checkpoints will be saved in `./results/<a_long_name_with_the_config>/model...pt`.
 You can change the output directory by providing `--ROOT path`.
 
@@ -20,9 +20,9 @@ You can activate WANDB with `--WANDB`.
 ## SnakeMake local
 First, install snakemake (`pip install snakemake`). Snakemake is a job scheduler it is set up
 here to run all the different combinations of all the configuration parameter lists.
-So if your Task.FULL looked like
+So if your NUCLR looked like
 ```python
-    FULL = {
+    NUCLR = {
         "LR": [1e-3, 1e-4],
         "BATCH_SIZE": [32, 64],
         "EPOCHS": [10, 20],
@@ -36,7 +36,7 @@ The results will be saved in `SN_ROOT/<a_long_name_with_the_config>/model...pt`.
 
 Note: You may need to set the environment variable `MKL_SERVICE_FORCE_INTEL` to 1 to avoid crashing. We're working
 fixing this bug. For now you can run your snakemake commands with the variable set as follows
-`MKL_SERVICE_FORCE_INTEL=1 snakemake -c4`  
+`MKL_SERVICE_FORCE_INTEL=1 snakemake -c4`
 
 ## Slurm
 Snakemake can run with slurm, you need to set only a few things:

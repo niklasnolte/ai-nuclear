@@ -9,17 +9,15 @@ from torch.optim.lr_scheduler import (
 )
 from torch.nn import CrossEntropyLoss, MSELoss
 from data import prepare_nuclear_data
-from model import get_model_and_optim
+from nuclr.model import get_model_and_optim
 from loss import rmse, accuracy
-from config import Task
 from log import Logger
 from argparse import Namespace
 from functools import cached_property
 
 
 class Trainer:
-    def __init__(self, problem: Task, args: Namespace):
-        self.problem = problem
+    def __init__(self, args: Namespace):
         self.args = args
         # prepare data
         self.data = prepare_nuclear_data(args)
@@ -230,6 +228,3 @@ class Trainer:
             return LinearLR(self.optimizers[fold], 1.0, 1e-2, max_steps)
         else:
             raise ValueError(f"Unknown scheduler {args.SCHED}")
-
-
-train = lambda *args: Trainer(*args).train()

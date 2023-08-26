@@ -1,5 +1,5 @@
 # %%
-from config import Task
+from config import NUCLR
 from config_utils import _deserialize_dict
 from data import prepare_nuclear_data
 from loss import loss_by_task, metric_by_task
@@ -7,8 +7,7 @@ from argparse import Namespace
 import matplotlib.pyplot as plt
 
 # %%
-TASK = Task.FULL
-args= Namespace(**{k:v[0] for k,v in Task.FULL.value.items()})
+args= Namespace(**{k:v[0] for k,v in NUCLR.items()})
 args.TARGETS_CLASSIFICATION = _deserialize_dict(args.TARGETS_CLASSIFICATION)
 args.TARGETS_REGRESSION = _deserialize_dict(args.TARGETS_REGRESSION)
 args.DEV = "cpu"

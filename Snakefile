@@ -7,24 +7,24 @@ import snakemake
 
 
 class Locations:
-  FULL = os.path.join(run_config.SM_ROOT, config_utils.get_name(config.Task.FULL))
-  FULL_model = os.path.join(FULL, f"done.txt")
+  NUCLR = os.path.join(run_config.SM_ROOT, config_utils.get_name(config.NUCLR))
+  NUCLR_model = os.path.join(NUCLR, f"done.txt")
 
 
 rule all:
   input:
-      expand(Locations.FULL_model,
-              **config.Task.FULL.value)
+      expand(Locations.NUCLR_model,
+              **config.NUCLR)
 
 
-rule train_FULL:
+rule train_NUCLR:
   output:
-    cps = directory(Locations.FULL),
-    model = Locations.FULL_model
+    cps = directory(Locations.NUCLR),
+    model = Locations.NUCLR_model
   resources:
     slurm_extra=run_config.get_slurm_extra_resources(),
     runtime="1h"
   run:
     shell(f"mkdir -p {output.cps}")
-    cmd = run_config.train_cmd(config.Task.FULL, wildcards)
+    cmd = run_config.train_cmd(wildcards)
     shell(cmd)

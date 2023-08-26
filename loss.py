@@ -5,7 +5,6 @@ import functools
 import argparse
 import math
 import unittest
-from model import Base
 
 class LossWithNan(torch.nn.Module):
     def __init__(self, loss):
@@ -123,28 +122,6 @@ def loss_by_task(
             output_column += 1
     return loss
 
-
-def regularize_embedding_dim(
-    model: Base,
-    X: torch.Tensor,
-    Y: torch.Tensor,
-    output_map: dict,
-    config: argparse.Namespace,
-) -> torch.Tensor:
-    idx = pick_random_index(model.hidden_dim, config.DIMREG_EXP)
-    embs = []
-    for emb in model.emb:
-        # Vt is d_model by d_model. Projecting A -> A @ V @ Vt = USVtVVt = USVt
-        try:
-          _, _, Vt = torch.linalg.svd(emb, full_matrices=False)
-        except torch.linalg.LinAlgError: # sometimes svd fails with singular matrix
-          return torch.zeros(1, device=X.device)
-        Vt = Vt[:idx]  # [ idx, d_model]
-        # squeeze out the embedding dimension
-        embs.append(emb @ Vt.T @ Vt)
-    out = model.forward_with_embeddings(X, embs)
-    loss = loss_by_task(out, Y, output_map, config)
-    return loss
 
 
 def get_balanced_accuracy(output: torch.Tensor, target: torch.Tensor) -> torch.Tensor:

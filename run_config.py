@@ -1,4 +1,3 @@
-from config import Task
 from config_utils import where_am_i
 import os
 
@@ -10,6 +9,10 @@ Clusters = dict(
     HARVARD = {
         "partition": "iaifi_gpu",
         "root": os.path.expanduser("~/data/AI-NUCLEAR-LOGS"),
+    },
+    FAIR = {
+        "partition": "learnlab",
+        "root": f"/checkpoint/{os.environ['USER']}/nuclr",
     },
     Local = {
         "root": "./results" ,
@@ -24,12 +27,11 @@ SM_SLURM = True
 SM_GPU = True
 
 def train_cmd(
-    task: Task,
     hyperparams={},  # filled by snakemake wildcards
 ):
     return " ".join(
         [
-            f"TASK={task.name}",
+            "MKL_SERVICE_FORCE_INTEL=GNU",
             f"python train.py",
             f"--WANDB" if SM_WANDB else "",
         ]  # or not
@@ -46,7 +48,7 @@ def get_slurm_extra_resources():
                 "--gres=gpu:1",
                 f"--partition={Clusters[where_am_i()]['partition']}",
                 "--mem=10G",
-                "--time=100:00:00",
+                "--time=72:00:00",
             ]
         )
     else:

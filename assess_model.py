@@ -4,7 +4,7 @@ from sklearn.decomposition import PCA
 from matplotlib import pyplot as plt
 plt.style.use("mystyle-bright.mplstyle")
 import numpy as np
-from config import Task
+from config import NUCLR
 from train_full import Trainer
 import os
 from mup import set_base_shapes
@@ -43,13 +43,13 @@ def read_args(path, device=None):
         args.DEV = device
     args.WHICH_FOLDS = list(range(args.N_FOLDS))
     return args
-logdir="/data/submit/nnolte/AI-NUCLEAR-LOGS/FULL/model_baseline/wd_0.01/lr_0.01/epochs_50000/nfolds_20/whichfolds_{fold}/hiddendim_1024/depth_4/seed_0/batchsize_4096/targetsclassification_None/targetsregression_binding_semf:1-z:1-n:1-radius:1-qa:1-qbm:1-qbm_n:1-qec:1/sched_cosine/lipschitz_false/tms_remove"
+logdir="/data/submit/nnolte/AI-NUCLEAR-LOGS/NUCLR/model_baseline/wd_0.01/lr_0.01/epochs_50000/nfolds_20/whichfolds_{fold}/hiddendim_1024/depth_4/seed_0/batchsize_4096/targetsclassification_None/targetsregression_binding_semf:1-z:1-n:1-radius:1-qa:1-qbm:1-qbm_n:1-qec:1/sched_cosine/lipschitz_false/tms_remove"
 args = read_args(os.path.join(logdir.format(fold=0), "args.yaml"))
-trainer = Trainer(Task.FULL, args)
+trainer = Trainer(NUCLR, args)
 # %%
 data = trainer.data
 for fold in range(args.N_FOLDS):
-    model_dir = os.path.join(logdir.format(fold=fold), f"model_FULL.pt.{fold}")
+    model_dir = os.path.join(logdir.format(fold=fold), f"model_NUCLR.pt.{fold}")
     print(model_dir)
     shapes = os.path.join(logdir.format(fold=fold), "shapes.yaml")
     trainer.models[fold].load_state_dict(torch.load(model_dir))

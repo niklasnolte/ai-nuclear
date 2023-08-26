@@ -1,13 +1,11 @@
 import torch
 import os
-from config import Task
+from config import NUCLR
 from config_utils import parse_arguments_and_get_name
-from train_full import train
+from train_nuclr import Trainer
 
-# load TASK from env
-TASK = Task[os.environ["TASK"]]
 
-args, name = parse_arguments_and_get_name(TASK)
+args, name = parse_arguments_and_get_name(NUCLR)
 args.name = name
 torch.manual_seed(args.SEED)
 
@@ -23,5 +21,4 @@ print(f"training run for {name}")
 #         os.remove(os.path.join(basedir, f))
 
 
-if TASK == Task.FULL:
-    train(TASK, args)
+Trainer(args).train()

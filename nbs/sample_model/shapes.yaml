@@ -1,0 +1,62 @@
+# This is a base shape file encoded in yaml
+# - `null` indicates a dimension is "finite", i.e. a non-"width" dimension
+# - a number indicates the base dimension of an "infinite" dimension, i.e. some notion of "width"
+emb.0:
+- null
+- 32
+emb.1:
+- null
+- 32
+emb.2:
+- null
+- 32
+nonlinear.0.bias:
+- 32
+nonlinear.0.weight:
+- 32
+- 96
+nonlinear.2.ff.0.bias:
+- 32
+nonlinear.2.ff.0.weight:
+- 32
+- 32
+nonlinear.2.ff.2.bias:
+- 32
+nonlinear.2.ff.2.weight:
+- 32
+- 32
+nonlinear.3.ff.0.bias:
+- 32
+nonlinear.3.ff.0.weight:
+- 32
+- 32
+nonlinear.3.ff.2.bias:
+- 32
+nonlinear.3.ff.2.weight:
+- 32
+- 32
+nonlinear.4.ff.0.bias:
+- 32
+nonlinear.4.ff.0.weight:
+- 32
+- 32
+nonlinear.4.ff.2.bias:
+- 32
+nonlinear.4.ff.2.weight:
+- 32
+- 32
+nonlinear.5.ff.0.bias:
+- 32
+nonlinear.5.ff.0.weight:
+- 32
+- 32
+nonlinear.5.ff.2.bias:
+- 32
+nonlinear.5.ff.2.weight:
+- 32
+- 32
+readout.bias:
+- null
+readout.weight:
+- null
+- 32

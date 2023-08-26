@@ -1,0 +1,34 @@
+BATCH_SIZE: 4096
+CKPT_FREQ: 50001
+DEPTH: 4
+DEV: cuda
+DROPOUT: 0.0
+EPOCHS: 50000
+FINAL_LR: 1.0e-05
+HIDDEN_DIM: 1024
+INCLUDE_NUCLEI_GT: 8
+LIPSCHITZ: 'false'
+LOG_FREQ: 1
+LR: 0.01
+MODEL: baseline
+N_FOLDS: 20
+ROOT: /checkpoint/nolte/nuclr
+SCHED: cosine
+SEED: 0
+TARGETS_CLASSIFICATION: {}
+TARGETS_REGRESSION:
+  binding_semf: 1.0
+  z: 1.0
+  n: 1.0
+  radius: 1.0
+  qa: 1.0
+  qbm: 1.0
+  qbm_n: 1.0
+  qec: 1.0
+TMS: keep
+WANDB: true
+WD: 0.01
+WHICH_FOLDS:
+- 1
+basedir: /checkpoint/nolte/nuclr/NUCLR/model_baseline/wd_0.01/lr_0.01/epochs_50000/nfolds_20/whichfolds_1/hiddendim_1024/depth_4/seed_0/batchsize_4096/includenucleigt_8/targetsclassification_None/targetsregression_binding_semf:1-z:1-n:1-radius:1-qa:1-qbm:1-qbm_n:1-qec:1/sched_cosine/lipschitz_false/tms_keep/dropout_0.0/finallr_1e-05
+name: NUCLR/model_baseline/wd_0.01/lr_0.01/epochs_50000/nfolds_20/whichfolds_1/hiddendim_1024/depth_4/seed_0/batchsize_4096/includenucleigt_8/targetsclassification_None/targetsregression_binding_semf:1-z:1-n:1-radius:1-qa:1-qbm:1-qbm_n:1-qec:1/sched_cosine/lipschitz_false/tms_keep/dropout_0.0/finallr_1e-05

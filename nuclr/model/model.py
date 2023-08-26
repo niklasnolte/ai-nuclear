@@ -5,8 +5,8 @@ from functools import partial
 import mup
 import warnings
 from typing import Callable, Optional, List
-from data import Data
-from monotonenorm.functional import direct_norm
+from ..data import Data
+from monotonicnetworks.functional import direct_norm
 from .modules import PeriodicEmbedding
 
 
@@ -319,7 +319,7 @@ def make_mup(model_fn: Callable, shape_file=None, **scale_kwargs) -> nn.Module:
     base = model_fn(**base_kwargs)
     delta = model_fn(**delta_kwargs)
     model = model_fn(**scale_kwargs)
-    mup.set_base_shapes(model, base, delta=delta, savefile=shape_file, do_assert=False)
+    mup.set_base_shapes(model, base, delta=delta, do_assert=False)
     del base, delta
     for name, param in model.named_parameters():
         if "weight" in name.lower() or "emb" in name.lower():  # FIXME or not

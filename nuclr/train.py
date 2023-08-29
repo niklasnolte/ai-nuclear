@@ -1,5 +1,6 @@
 import tqdm
 import torch
+import math
 from torch.utils.data import DataLoader, TensorDataset
 from torch.optim.lr_scheduler import (
     CosineAnnealingLR,
@@ -10,31 +11,43 @@ from torch.optim.lr_scheduler import (
 from torch.nn import CrossEntropyLoss, MSELoss
 from nuclr.data import prepare_nuclear_data
 from nuclr.model import get_model_and_optim
-from nuclr.loss import rmse, accuracy
+from nuclr.loss import rmse, mse, accuracy
 from nuclr.log import Logger
 from argparse import Namespace
 from functools import cached_property
+from .config import NUCLR
 import os, yaml
+import typing as T
 
 
 class Trainer:
     @classmethod
-    def from_path(cls, path):
-        # read yaml in path
+    def from_path(cls, path:str, which_folds: T.Optional[list]=None):
         args_path = os.path.join(path, "args.yaml")
-        model_path = os.path.join(path, "model_best.pt.{fold}")
         with open(args_path, "r") as f:
             args = yaml.load(f, Loader=yaml.FullLoader)
         args = Namespace(**args)
         args.basedir = ""
         args.WANDB = 0
         args.CKPT = ""
+        if which_folds is None:
+          which_folds = args.WHICH_FOLDS
+        else:
+          assert isinstance(which_folds, list)
+
+        model_paths = {}
+        for fold in which_folds:
+            model_path = path.replace(f"whichfolds_{args.WHICH_FOLDS[0]}", f"whichfolds_{fold}")
+            model_path = os.path.join(model_path, f"model_best.pt.{fold}")
+            model_paths[fold] = model_path
+
+        args.WHICH_FOLDS = which_folds
 
         # create trainer
         trainer = cls(args)
-        for fold in args.WHICH_FOLDS:
+        for fold in model_paths:
             trainer.models[fold].load_state_dict(
-                torch.load(model_path.format(fold=fold))
+                torch.load(model_paths[fold])
             )
         trainer.log = False
         return trainer
@@ -72,7 +85,7 @@ class Trainer:
             "classification": CrossEntropyLoss(reduction="sum"),
         }
         self.metric_fn = {
-            "regression": rmse,
+            "regression": mse,
             "classification": accuracy,
         }
         # prepare logger
@@ -137,9 +150,15 @@ class Trainer:
         # average over folds
         metrics_dict = {}
         for k in metrics_dicts[0].keys():
-            metrics_dict[k] = sum(m[k] for m in metrics_dicts) / len(metrics_dicts)
+            metrics_k = [m[k] for m in metrics_dicts if not math.isnan(m[k])]
+            metrics_dict[k] = sum(metrics_k) / len(metrics_k)
         if self.log:
-            self.logger.log(metrics_dict, self.epoch)
+            # check ckpt_freq
+            save_model = (
+                self.epoch % self.args.CKPT_FREQ == 0
+                or self.epoch == self.args.EPOCHS - 1
+            )
+            self.logger.log(metrics_dict, self.epoch, save_model=save_model)
         return metrics_dict
 
     def construct_metrics(self, losses, metrics, num_samples, prefix):

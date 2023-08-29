@@ -1,4 +1,4 @@
-from config_utils import serialize_elements_in_task, _deserialize_dict
+from .config_utils import serialize_elements_in_task, _deserialize_dict
 from argparse import Namespace
 import os
 

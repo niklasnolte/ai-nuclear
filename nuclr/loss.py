@@ -23,11 +23,14 @@ def accuracy(output: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
     masked_output = output[mask]
     return (masked_output.argmax(dim=-1) == masked_target).float().mean()
 
-def rmse(output: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
+def mse(output: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
     mask = ~torch.isnan(targets)
     masked_target = targets[mask]
     masked_output = output[mask]
-    return torch.sqrt(F.mse_loss(masked_output, masked_target, reduction="none").mean())
+    return F.mse_loss(masked_output, masked_target, reduction="mean")
+
+def rmse(output: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
+    return torch.sqrt(mse(output, targets))
 
 def random_softmax(shape, scale=1):
     x = torch.rand(shape)

@@ -1,7 +1,7 @@
 import torch
 import os
 from nuclr.config import NUCLR
-from config_utils import parse_arguments_and_get_name
+from nuclr.config_utils import parse_arguments_and_get_name
 from nuclr.train import Trainer
 
 

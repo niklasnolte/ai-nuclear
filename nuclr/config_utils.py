@@ -100,11 +100,6 @@ def _make_suffix_for(arg: str):
     return f"{arg.lower().replace('_', '')}_{{{arg}}}"
 
 
-def _get_qualified_name(task, args):
-    name = get_name(task)
-    return name.format(**vars(args))
-
-
 def get_name(task):
     name = "/".join(
         [
@@ -115,8 +110,13 @@ def get_name(task):
     return name
 
 
+def get_qualified_name(task, args):
+    name = get_name(task)
+    return name.format(**vars(args))
+
+
 def parse_arguments_and_get_name(task):
     args = _parse_arguments(task)
-    name = _get_qualified_name(task, args)
+    name = get_qualified_name(task, args)
     args = _args_postprocessing(args)
     return args, name

@@ -2,7 +2,7 @@ import torch
 import os
 from nuclr.config import NUCLR
 from config_utils import parse_arguments_and_get_name
-from train_nuclr import Trainer
+from nuclr.train import Trainer
 
 
 args, name = parse_arguments_and_get_name(NUCLR)

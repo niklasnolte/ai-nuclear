@@ -2,7 +2,7 @@ import torch
 from data import prepare_nuclear_data
 from config import NUCLR
 import matplotlib.pyplot as plt
-from model import get_model_and_optim
+from nuclr.model import get_model_and_optim
 from config_utils import parse_arguments_and_get_name
 import os
 

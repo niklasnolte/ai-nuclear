@@ -18,24 +18,21 @@ class Logger:
                 self.wandb = True
                 n_params = sum(p.numel() for p in models[0].parameters())
                 wandb.init(
-                    project="NuCLR",
+                    project="nuclr_iclr24",
                     entity="iaifi",
                     name=args.name,
                     notes="new and great runs",
-                    tags=["Aug23"],
-                    group="ICML23",
+                    tags=["good_performance_run"],
+                    group="ICLR24",
                     config=dict(vars(args)),
                 )
                 wandb.config.update({"n_params": n_params})
-                wandb.save("train.py")
-                wandb.save("config.py")
-                wandb.save("config_utils.py")
-                wandb.save("loss.py")
-                wandb.save("model.py")
-                wandb.save("data.py")
-                wandb.save("train_full.py")
-                wandb.save("log.py")
-                wandb.save("run_config.py")
+                artifact = wandb.Artifact(
+                    "nuclr", type="code", description="nuclr code"
+                )
+                nuclr_dir = os.path.dirname(os.path.abspath(__file__))
+                artifact.add_dir(nuclr_dir)
+                wandb.log_artifact(artifact)
             else:
                 self.wandb = False
         else:

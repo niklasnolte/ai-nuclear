@@ -1,21 +1,21 @@
 from config_utils import serialize_elements_in_task, _deserialize_dict
 from argparse import Namespace
-import os 
+import os
 
 datadir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
 
 NUCLR = serialize_elements_in_task(
     dict(
-        MODEL=["baseline", "NZInt", "PeriodicEmb"],
-        WD=[1e-2, 1e-3],
-        LR=[1e-2, 3e-3, 1e-3],
+        MODEL=["baseline"],
+        WD=[1e-2],
+        LR=[1e-2],
         EPOCHS=[50000],
-        N_FOLDS=[20],
-        WHICH_FOLDS=[[0]],#[[i] for i in range(20)],
-        HIDDEN_DIM=[128, 1024],
-        DEPTH=[2, 4, 6],
+        N_FOLDS=[n_folds:=100],
+        WHICH_FOLDS=[[i] for i in range(n_folds)],
+        HIDDEN_DIM=[1024],
+        DEPTH=[4],
         SEED=[0],
-        BATCH_SIZE=[1024, 4096],
+        BATCH_SIZE=[4096],
         INCLUDE_NUCLEI_GT=[8],
         TARGETS_CLASSIFICATION=[
             {},
@@ -45,7 +45,7 @@ NUCLR = serialize_elements_in_task(
         ],
         SCHED=["cosine"],
         LIPSCHITZ=["false"],
-        TMS=["keep"],
+        TMS=["remove"],
         DROPOUT=[0.0, .05],
         FINAL_LR=[1e-5],
     )

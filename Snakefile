@@ -1,6 +1,6 @@
 import os
 import config_utils
-import config
+import nuclr.config as config
 import run_config
 import numpy
 import snakemake

@@ -1,4 +1,4 @@
-from config_utils import where_am_i
+from .config_utils import where_am_i
 import os
 
 Clusters = dict(

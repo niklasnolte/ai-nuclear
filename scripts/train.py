@@ -1,7 +1,7 @@
 import torch
 import os
 from nuclr.config import NUCLR
-from nuclr.config_utils import parse_arguments_and_get_name
+from lib.config_utils import parse_arguments_and_get_name
 from nuclr.train import Trainer
 
 
@@ -13,12 +13,6 @@ torch.manual_seed(args.SEED)
 args.basedir = os.path.join(args.ROOT, name)
 os.makedirs(args.basedir, exist_ok=True)
 print(f"training run for {name}")
-
-# remove old models
-# FIXME should we really do that?
-# for f in os.listdir(basedir):
-#     if f.endswith(".pt"):
-#         os.remove(os.path.join(basedir, f))
 
 
 Trainer(args).train()

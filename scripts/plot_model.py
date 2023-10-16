@@ -3,7 +3,7 @@ from nuclr.data import prepare_nuclear_data
 from nuclr.config import NUCLR
 import matplotlib.pyplot as plt
 from nuclr.model import get_model_and_optim
-from nuclr.config_utils import parse_arguments_and_get_name
+from lib.config_utils import parse_arguments_and_get_name
 import os
 
 

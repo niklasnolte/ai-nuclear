@@ -1,7 +1,11 @@
 from collections.abc import Iterable
 import argparse
+import os
+from pathlib import Path
 import socket
 
+DATA_DIR = os.environ.get("NUCLR_DATA_DIR", Path(__file__).parent.parent / "data")
+ROOT_DIR = os.environ.get("NUCLR_ROOT_DIR", Path(__file__).parent.parent / "results")
 
 def where_am_i():
     host = socket.gethostname()
@@ -16,6 +20,7 @@ def where_am_i():
         Warning(f"Unknown cluster: {host}")
         return "Local"
 
+
 def _serialize_dict(targets: dict) -> str:
     if targets == {}:
         return "None"
@@ -27,11 +32,14 @@ def _deserialize_dict(targets: str) -> dict:
         return {}
     return {k: float(v) for k, v in [t.split(":") for t in targets.split("-")]}
 
+
 def _serialize_list(targets: list) -> str:
     return "-".join([str(t) for t in targets])
 
+
 def _deserialize_list(targets: str) -> list:
     return [float(t) for t in targets.split("-")]
+
 
 def serialize_elements_in_task(task: dict):
     """
@@ -69,7 +77,7 @@ def _add_operational_args_(parser: argparse.ArgumentParser):
         "--WANDB", action="store_true", default=False, help="use wandb or not"
     )
     parser.add_argument(
-        "--ROOT", type=str, default="./results", help="root folder to store models"
+        "--ROOT", type=str, default=ROOT_DIR, help="root folder to store models"
     )
     parser.add_argument("--LOG_FREQ", type=int, default=1, help="log every n epochs")
     parser.add_argument(

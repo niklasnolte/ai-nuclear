@@ -9,7 +9,7 @@ import torch
 import argparse
 import warnings
 from collections import namedtuple, OrderedDict
-from .config import datadir
+from lib.config_utils import DATA_DIR
 
 def delta(Z, N):
     A = Z + N
@@ -93,7 +93,7 @@ def WS4_mass_formula(df):
     mp = 938.78307
     mn = 939.56542
 
-    file_path = os.path.join(datadir, "WS4.txt")
+    file_path = os.path.join(DATA_DIR, "WS4.txt")
 
     df_WS4 = pd.read_fwf(file_path, widths=[9, 9, 15, 15])
 
@@ -308,10 +308,10 @@ def get_nuclear_data(recreate=False):
         return pd.read_csv(urllib.request.urlopen(req))
 
     # TODO explain what is hapenning here
-    file_path = os.path.join(datadir, "ame2020.csv")
+    file_path = os.path.join(DATA_DIR, "ame2020.csv")
     df2 = pd.read_csv(file_path).set_index(["z", "n"])
     df2 = df2[~df2.index.duplicated(keep="first")]
-    ground_states_file = os.path.join(datadir, "ground_states.csv")
+    ground_states_file = os.path.join(DATA_DIR, "ground_states.csv")
     if recreate or not os.path.exists(ground_states_file):
         df = lc_read_csv("fields=ground_states&nuclides=all")
         df.to_csv(ground_states_file, index=False)

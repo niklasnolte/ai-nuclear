@@ -4,16 +4,16 @@ There are 3 ways to run this pipeline, depending on how many jobs you want to ru
 A single run (interactively) to test a single configuration.
 All configuration lives in `config.py`.
 To run, choose as task from the Task enum in `config.py`, for instance `NUCLR`. (At the moment of writing this `NUCLR` is the only option available).
-Then you can run a default run with `TASK=NUCLR python train.py`.
+Then you can run a default run with `python scripts/train.py`.
 
 The configurable parameters are defined in the tasks dict (again in `config.py`).
 Each Element in the dict has a key, which is the name of the configurable (for instance `LR`)
 and a list of values. The first value is the default. The rest of the values are not
 used for a single run, see the Snakemake section.
 You can change any of those default parameters by providing `--key=new_value` to your run command,
-e.g. `TASK=NUCLR python train.py --LR=1e-3`.
+e.g. `python scripts/train.py --LR=1e-3`.
 By default, model checkpoints will be saved in `./results/<a_long_name_with_the_config>/model...pt`.
-You can change the output directory by providing `--ROOT path`.
+You can change the output directory by providing `--ROOT path` or by setting an environment variable, see below.
 
 You can activate WANDB with `--WANDB`.
 
@@ -59,3 +59,10 @@ default-resources:
 
 Then run with `MKL_SERVICE_FORCE_INTEL=1 snakemake --slurm --profile slurm_gpu`.
 The MKL_SERVICE_FORCE_INTEL is needed on some clusters, not sure why.
+
+## Changing default directories
+Default directories can be updated using environment variables.
+For instance, to change the default data directory, you can set the environment variable `NUCLR_DATA_DIR` using `export NUCLR_DATA_DIR=/path/to/data` in your shell/rc file.
+Checkpoints and metadata are saved to `NUCLR_ROOT_DIR`, which defaults to `./results`.
+##  TODO
+- Use wandb artifacts to load models and data from a particular run.

@@ -2,6 +2,7 @@
 from nuclr.config import NUCLR
 from nuclr.config_utils import _deserialize_dict
 from nuclr.data import prepare_nuclear_data
+from lib.config_utils import _deserialize_dict
 from argparse import Namespace
 import matplotlib.pyplot as plt
 

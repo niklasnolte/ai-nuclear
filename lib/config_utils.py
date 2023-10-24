@@ -68,13 +68,15 @@ def _args_postprocessing(args: argparse.Namespace):
     if args.CKPT_FREQ == -1:
         # only log last
         args.CKPT_FREQ = args.EPOCHS + 1
+
+    assert args.CKPT_FREQ % args.LOG_FREQ == 0, "ckpt_freq must be a multiple of log_freq"
     return args
 
 
 def _add_operational_args_(parser: argparse.ArgumentParser):
     parser.add_argument("--DEV", type=str, default="cpu", help="device to use")
     parser.add_argument(
-        "--WANDB", action="store_true", default=False, help="use wandb or not"
+        "--WANDB", type=int, default=0, help="use wandb or not"
     )
     parser.add_argument(
         "--ROOT", type=str, default=ROOT_DIR, help="root folder to store models"
@@ -86,6 +88,7 @@ def _add_operational_args_(parser: argparse.ArgumentParser):
         default=-1,
         help="save checkpoint every n epochs, -1 == only log the last",
     )
+    parser.add_argument("--exp_name", type=str, default="NUCLR", help="experiment name")
 
 
 def _parse_arguments(params):

@@ -21,7 +21,7 @@ NUCLR = serialize_elements_in_task(
         ],
         TARGETS_REGRESSION=[
             {
-                # "binding": 1,
+                #"binding": 1,
                 "binding_semf": 1,
                 "z": 1,
                 "n": 1,
@@ -44,8 +44,9 @@ NUCLR = serialize_elements_in_task(
         SCHED=["cosine"],
         LIPSCHITZ=["false"],
         TMS=["remove"],  # keep or remove nuclei with high uncertainty in binding energy
-        DROPOUT=[0.0, 0.05],
+        DROPOUT=[0.0],
         FINAL_LR=[1e-5],
+        WD_ON_EMBEDDINGS=["false"],
     )
 )
 

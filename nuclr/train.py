@@ -25,7 +25,7 @@ class Trainer:
     def from_path(cls, path:str, which_folds: T.Optional[list]=None):
         args_path = os.path.join(path, "args.yaml")
         with open(args_path, "r") as f:
-            args = yaml.load(f, Loader=yaml.FullLoader)
+            args = yaml.load(f, Loader=yaml.Loader)
         args = Namespace(**args)
         args.basedir = ""
         args.WANDB = 0

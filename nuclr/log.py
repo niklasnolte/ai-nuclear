@@ -18,12 +18,12 @@ class Logger:
                 self.wandb = True
                 n_params = sum(p.numel() for p in models[0].parameters())
                 wandb.init(
-                    project="nuclr_iclr24",
+                    project="nuclr_revisited",
                     entity="iaifi",
                     name=args.name,
-                    notes="new and great runs",
-                    tags=["good_performance_run"],
-                    group="ICLR24",
+                    notes="find the spiral",
+                    tags=["finding_the_spiral"],
+                    group="spiral",
                     config=dict(vars(args)),
                 )
                 wandb.config.update({"n_params": n_params})
@@ -86,6 +86,7 @@ class Logger:
             epoch_str = (
                 str(epoch) if epoch != self.args.EPOCHS - 1 else "final"
             )
+            print("saving model", epoch_str)
             [
                 torch.save(
                     self.models[fold].state_dict(),

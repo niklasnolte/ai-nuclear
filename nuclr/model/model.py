@@ -248,11 +248,18 @@ def get_model_and_optim(data: Data, config):
         shape_file = None
     model = make_mup(model_fn, shape_file, hidden_dim=config.HIDDEN_DIM).to(config.DEV)
     # model = model_fn(hidden_dim=config.HIDDEN_DIM).to(config.DEV)
+    def apply_weight_decay(name):
+        condition = "bias" not in name.lower()
+        if config.WD_ON_EMBEDDINGS.lower() == "false":
+            return condition and "emb" not in name.lower()
+        else:
+            return condition
+
     param_groups = [
-        {"params": [p for n, p in model.named_parameters() if "bias" in n.lower()]},
+        {"params": [p for n, p in model.named_parameters() if not apply_weight_decay(n)]},
         {
             "params": [
-                p for n, p in model.named_parameters() if "bias" not in n.lower()
+                p for n, p in model.named_parameters() if apply_weight_decay(n)
             ],
             "weight_decay": config.WD,
         },

@@ -29,10 +29,10 @@ So if your NUCLR looked like
     }
 ```
 then snakemake will run $2^3=8$ jobs, each with a different combination of the parameters.
-The top of config.py has a couple of configurable options for snakemake, like `SN_GPU` and `SN_ROOT`.
+`lib/run_config.py` has a couple of configurable options for snakemake, like `SM_GPU` and `SM_ROOT`.
 Change those as you wish.
 Then you can run `snakemake -c4` to run 4 jobs in parallel and get through all the tasks.
-The results will be saved in `SN_ROOT/<a_long_name_with_the_config>/model...pt`.
+The results will be saved in `SM_ROOT/<a_long_name_with_the_config>/model...pt`.
 
 Note: You may need to set the environment variable `MKL_SERVICE_FORCE_INTEL` to 1 to avoid crashing. We're working
 fixing this bug. For now you can run your snakemake commands with the variable set as follows
@@ -40,7 +40,7 @@ fixing this bug. For now you can run your snakemake commands with the variable s
 
 ## Slurm
 Snakemake can run with slurm, you need to set only a few things:
-If you want to run on GPUs, set `SN_GPU` in config.py.
+If you want to run on GPUs, set `SM_GPU` in config.py.
 Adjust the slurm extra parameters in `Snakefile` to match your specifications, mostly the partition.
 Make a slurm config file for snakemake, example: `~/.config/snakemake/slurm_gpu/config.yaml`:
 

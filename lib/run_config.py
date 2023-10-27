@@ -32,7 +32,7 @@ def train_cmd(
     return " ".join(
         [
             "MKL_SERVICE_FORCE_INTEL=GNU",
-            f"python train.py",
+            f"python scripts/train.py",
             f"--WANDB" if SM_WANDB else "",
         ]  # or not
         + [f"--{k} {v}" for k, v in hyperparams.items()]

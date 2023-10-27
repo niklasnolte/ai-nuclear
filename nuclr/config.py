@@ -6,12 +6,12 @@ NUCLR = serialize_elements_in_task(
     dict(
         MODEL=["baseline"],
         WD=[0],
-        L1REG=[1e-5],
+        L1REG=[0., 1e-5],
         LR=[1e-2],
-        EPOCHS=[50000],
+        EPOCHS=[5000],
         N_FOLDS=[n_folds := 10],
-        WHICH_FOLDS=[[i] for i in range(n_folds)],
-        HIDDEN_DIM=[128, 1024],
+        WHICH_FOLDS=[[0]], #[[i] for i in range(n_folds)],
+        HIDDEN_DIM=[64],
         DEPTH=[1],
         SEED=[0],
         BATCH_SIZE=[4096],
@@ -45,9 +45,10 @@ NUCLR = serialize_elements_in_task(
         SCHED=["cosine"],
         LIPSCHITZ=["false"],
         TMS=["remove"],  # keep or remove nuclei with high uncertainty in binding energy
-        DROPOUT=[0.0, 0.05],
+        DROPOUT=[0.0],
         FINAL_LR=[1e-5],
-        BASE_WIDTH=[16], # the width used for HParam tuning
+        BASE_WIDTH=[64], # the width used for HParam tuning
+        TAGS=[["DEBUG"]],
     )
 )
 

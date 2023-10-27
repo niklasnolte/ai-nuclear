@@ -11,6 +11,7 @@ from ..data import Data
 from monotonicnetworks.functional import direct_norm
 from .modules import PeriodicEmbedding
 from .RNN import RNN
+import torchfire as tf
 
 
 class Base(nn.Module):
@@ -91,6 +92,13 @@ class NuCLRModel(Base):
         x = self.nonlinear(x)  # [ batch_size, hidden_dim ]
         return torch.sigmoid(self.readout(x))  # [ batch_size, output_dim ]
 
+    def update_readout(self):
+        """function that takes our model and returns all readout layers"""
+        readout_shape = self.readout.weight.shape
+        self.readout = mup.MuReadout(readout_shape[1], readout_shape[0])
+        return [self.readout]
+
+
 class NZIntModel(nn.Module):
     def __init__(
         self,
@@ -121,15 +129,15 @@ class NZIntModel(nn.Module):
         self.protonet = nn.Sequential(
             nn.Linear(1, hidden_dim),
             nn.SiLU(),
-            ResidualBlock(hidden_dim, norm=norm, activation=act, dropout=dropout)
+            ResidualBlock(hidden_dim, norm=norm, activation=act, dropout=dropout),
         )
         self.neutronet = nn.Sequential(
             nn.Linear(1, hidden_dim),
             nn.SiLU(),
-            ResidualBlock(hidden_dim, norm=norm, activation=act, dropout=dropout)
+            ResidualBlock(hidden_dim, norm=norm, activation=act, dropout=dropout),
         )
         self.nonlinear = nn.Sequential(
-            nn.Linear(hidden_dim*2 + task_embedding_dim, hidden_dim),
+            nn.Linear(hidden_dim * 2 + task_embedding_dim, hidden_dim),
             nn.SiLU(),
             *[
                 ResidualBlock(hidden_dim, norm=norm, activation=act, dropout=dropout)
@@ -139,8 +147,8 @@ class NZIntModel(nn.Module):
         self.readout = norm(nn.Linear(hidden_dim, output_dim))
 
     def forward(self, x):  # embs: [ batch_size, 2 * hidden_dim ]
-        protons = self.protonet(x[:, [0]]/self.vocab_size[0])
-        neutrons = self.neutronet(x[:, [1]]/self.vocab_size[1])
+        protons = self.protonet(x[:, [0]] / self.vocab_size[0])
+        neutrons = self.neutronet(x[:, [1]] / self.vocab_size[1])
         tasks = self.task_embedding(x[:, 2])
         x = torch.cat([protons, neutrons, tasks], dim=1)
         x = self.nonlinear(x)  # [ batch_size, hidden_dim ]
@@ -229,25 +237,23 @@ def get_model_and_optim(data: Data, config):
     torch.manual_seed(config.SEED)
     # set up model
     output_dim = sum(data.output_map.values())
-
     model_fn = get_model_fn(config)
-    model_fn = partial(
+    model = tf.mup.make_mup(
         model_fn,
-        vocab_size=data.vocab_size,
-        non_embedded_input_dim=data.X.shape[1] - len(data.vocab_size),
-        output_dim=output_dim,
-        depth=config.DEPTH,
-        dropout=config.DROPOUT,
-        lipschitz=config.LIPSCHITZ == "true",
-    )
-    if hasattr(config, "basedir"):
-        # FIXME: this is a terrible hack to avoid saving shapes outside of the
-        # actual training run
-        shape_file = os.path.join(config.basedir, "shapes.yaml")
-    else:
-        shape_file = None
-    model = make_mup(model_fn, shape_file, hidden_dim=config.HIDDEN_DIM).to(config.DEV)
-    # model = model_fn(hidden_dim=config.HIDDEN_DIM).to(config.DEV)
+        model_fn.update_readout,
+        dict(
+            vocab_size=data.vocab_size,
+            non_embedded_input_dim=data.X.shape[1] - len(data.vocab_size),
+            output_dim=output_dim,
+            depth=config.DEPTH,
+            dropout=config.DROPOUT,
+            lipschitz=config.LIPSCHITZ == "true",
+            hidden_dim=config.HIDDEN_DIM,
+        ),
+        dict(hidden_dim=config.BASE_WIDTH),
+    ).to(config.DEV)
+    
+    
     param_groups = [
         {"params": [p for n, p in model.named_parameters() if "bias" in n.lower()]},
         {

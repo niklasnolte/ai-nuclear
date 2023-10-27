@@ -16,13 +16,14 @@ from nuclr.log import Logger
 from argparse import Namespace
 from functools import cached_property
 from .config import NUCLR
+from .bimt import l1_reg
 import os, yaml
 import typing as T
 
 
 class Trainer:
     @classmethod
-    def from_path(cls, path:str, which_folds: T.Optional[list]=None):
+    def from_path(cls, path: str, which_folds: T.Optional[list] = None):
         args_path = os.path.join(path, "args.yaml")
         with open(args_path, "r") as f:
             args = yaml.load(f, Loader=yaml.FullLoader)
@@ -31,13 +32,15 @@ class Trainer:
         args.WANDB = 0
         args.CKPT = ""
         if which_folds is None:
-          which_folds = args.WHICH_FOLDS
+            which_folds = args.WHICH_FOLDS
         else:
-          assert isinstance(which_folds, list)
+            assert isinstance(which_folds, list)
 
         model_paths = {}
         for fold in which_folds:
-            model_path = path.replace(f"whichfolds_{args.WHICH_FOLDS[0]}", f"whichfolds_{fold}")
+            model_path = path.replace(
+                f"whichfolds_{args.WHICH_FOLDS[0]}", f"whichfolds_{fold}"
+            )
             model_path = os.path.join(model_path, f"model_best.pt.{fold}")
             model_paths[fold] = model_path
 
@@ -46,9 +49,7 @@ class Trainer:
         # create trainer
         trainer = cls(args)
         for fold in model_paths:
-            trainer.models[fold].load_state_dict(
-                torch.load(model_paths[fold])
-            )
+            trainer.models[fold].load_state_dict(torch.load(model_paths[fold]))
         trainer.log = False
         return trainer
 
@@ -115,6 +116,8 @@ class Trainer:
         task = X[:, len(self.data.vocab_size) - 1]
         losses, num_samples = self.loss_by_task(task, out, y)
         loss = losses.sum() / num_samples.sum()  # TODO weights?
+        if self.args.L1REG:
+            loss += l1_reg(self.models[fold], self.args.L1REG)
         # TODO add grad clipping
         loss.backward()
         self.optimizers[fold].step()
@@ -194,7 +197,10 @@ class Trainer:
             Tuple[Dict]: Array of losses or metrics for each task and array of number of samples for each task.
         """
         # out_idx is the index of the first output for the current task
-        losses, num_samples = torch.zeros(self.num_tasks), torch.zeros(self.num_tasks)
+        dev = task.device
+        losses, num_samples = torch.zeros(self.num_tasks, device=dev), torch.zeros(
+            self.num_tasks, device=dev
+        )
         taski, out_idx = 0, 0
 
         def fill_losses(task_names, loss_fn):

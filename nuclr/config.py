@@ -5,13 +5,14 @@ from argparse import Namespace
 NUCLR = serialize_elements_in_task(
     dict(
         MODEL=["baseline"],
-        WD=[1e-2],
+        WD=[0],
+        L1REG=[1e-5],
         LR=[1e-2],
         EPOCHS=[50000],
-        N_FOLDS=[n_folds := 100],
+        N_FOLDS=[n_folds := 10],
         WHICH_FOLDS=[[i] for i in range(n_folds)],
         HIDDEN_DIM=[128, 1024],
-        DEPTH=[2],
+        DEPTH=[1],
         SEED=[0],
         BATCH_SIZE=[4096],
         INCLUDE_NUCLEI_GT=[8],
@@ -46,6 +47,7 @@ NUCLR = serialize_elements_in_task(
         TMS=["remove"],  # keep or remove nuclei with high uncertainty in binding energy
         DROPOUT=[0.0, 0.05],
         FINAL_LR=[1e-5],
+        BASE_WIDTH=[16], # the width used for HParam tuning
     )
 )
 

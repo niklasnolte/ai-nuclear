@@ -4,9 +4,9 @@ from torch import nn
 centered_range = lambda x: torch.arange(x) - (x - 1) / 2
 
 
-def l1_reg(model, *args, **kwargs):
-    reg = 0.0
-    lambd = 0.001
+def l1_reg(model, lambd=0.001):
+    dev = next(model.parameters()).device
+    reg = torch.tensor(0.0, device=dev)
     for name, param in model.named_parameters():
         if "weight" in name:
             reg += torch.sum(torch.abs(param))  # L1 norm

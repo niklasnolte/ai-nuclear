@@ -50,7 +50,7 @@ class AutoEncoder(torch.nn.Module):
 BATCH_SIZE=1024
 STEPS = 50000
 input_dim = 1024
-hidden_dim = 1024*10
+hidden_dim = 1024*5
 autoencoder = AutoEncoder(input_dim, hidden_dim).to(trainer.args.DEV)
 optimizer = torch.optim.Adam(autoencoder.parameters(), lr=1e-2)
 scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=STEPS)
@@ -131,37 +131,43 @@ nonzero_idxs = wide_acts.sum(0).nonzero().flatten().cpu().numpy()
 #     plt.show()
 
 # %%
-trainer.data.scaled_idxs
-# %%
 # lets calculate the gradient of the binding energy with respect to the activation
 with torch.no_grad():
   _input = wide_acts[::8].clone()
 _input.requires_grad_(True)
-output = binding(_input).sum().backward()
+binding(_input).sum().backward()
 # %%
-_, topk_idxs = _input.grad.abs().topk(50)
-assert all([len(topk_idxs[:,i].unique()) == 1 for i in range(50)])
+n_tops = len(nonzero_idxs) - 5
+_, topk_idxs = _input.grad.abs().topk(n_tops)
+assert all([len(topk_idxs[:,i].unique()) == 1 for i in range(n_tops)]) # linear enough
 # %%
 torch.isin(topk_idxs, wide_acts.sum(0).nonzero().flatten()).all()
-# %%
-topk_idxs[0]
+
 # %%
 with torch.no_grad():
-  topk_inputs = _input.gather(1, topk_idxs).cpu().numpy()
+  # measure the effect on the BE when removing those activations
+  output = binding(_input)
+  diffs = {}
+  for idx in topk_idxs[0]:
+    zerod_input = _input.clone()
+    zerod_input[:, idx] = 0
+    zerod_output = binding(zerod_input)
+    diff = output - zerod_output
+    diffs[idx.item()] = diff
 # %%
 zs = trainer.data.X[::8][:, 0].cpu().numpy()
 ns = trainer.data.X[::8][:, 1].cpu().numpy()
-# %%
-topk_inputs.shape
+
 # %%
 # 3d plot with topk_inputs as color and zs and ns on the axes
-for i, idx in enumerate(topk_idxs[0]):
-  avg_grad = _input.grad[:, idx].abs().mean().item()
-  plt.scatter(zs, ns, c=topk_inputs[:,i], s=5)
-  plt.title(f"activation {idx}, avg grad {avg_grad:.3e}")
+for idx in topk_idxs[0]:
+  plt.scatter(zs, ns, c=diffs[idx], s=5)
+  plt.title(f"activation {idx}")
   plt.colorbar()
   plt.xlabel("Z")
   plt.ylabel("N")
   # plt.scatter(ns, topk_inputs[:,0], alpha=.3, s=5)
   plt.show()
+# %%
+len(nonzero_idxs)
 # %%

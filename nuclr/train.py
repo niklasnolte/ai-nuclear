@@ -22,7 +22,7 @@ import typing as T
 
 class Trainer:
     @classmethod
-    def from_path(cls, path:str, which_folds: T.Optional[list]=None):
+    def from_path(cls, path:str, which_folds: T.Optional[list]=None, epoch="best"):
         args_path = os.path.join(path, "args.yaml")
         with open(args_path, "r") as f:
             args = yaml.load(f, Loader=yaml.Loader)
@@ -38,7 +38,7 @@ class Trainer:
         model_paths = {}
         for fold in which_folds:
             model_path = path.replace(f"whichfolds_{args.WHICH_FOLDS[0]}", f"whichfolds_{fold}")
-            model_path = os.path.join(model_path, f"model_best.pt.{fold}")
+            model_path = os.path.join(model_path, f"model_{epoch}.pt.{fold}")
             model_paths[fold] = model_path
 
         args.WHICH_FOLDS = which_folds

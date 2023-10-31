@@ -65,11 +65,11 @@ def _args_postprocessing(args: argparse.Namespace):
     args.WHICH_FOLDS = [int(x) for x in _deserialize_list(args.WHICH_FOLDS)]
 
     # log freq
+    assert args.CKPT_FREQ % args.LOG_FREQ == 0 or args.CKPT_FREQ==-1, "ckpt_freq must be a multiple of log_freq"
     if args.CKPT_FREQ == -1:
         # only log last
         args.CKPT_FREQ = args.EPOCHS + 1
 
-    assert args.CKPT_FREQ % args.LOG_FREQ == 0, "ckpt_freq must be a multiple of log_freq"
     return args
 
 

@@ -137,7 +137,7 @@ with torch.no_grad():
 _input.requires_grad_(True)
 binding(_input).sum().backward()
 # %%
-n_tops = len(nonzero_idxs) - 5
+n_tops = len(nonzero_idxs)
 _, topk_idxs = _input.grad.abs().topk(n_tops)
 assert all([len(topk_idxs[:,i].unique()) == 1 for i in range(n_tops)]) # linear enough
 # %%
@@ -153,21 +153,35 @@ with torch.no_grad():
     zerod_input[:, idx] = 0
     zerod_output = binding(zerod_input)
     diff = output - zerod_output
-    diffs[idx.item()] = diff
+    diffs[idx.item()] = diff.cpu().numpy()
 # %%
 zs = trainer.data.X[::8][:, 0].cpu().numpy()
 ns = trainer.data.X[::8][:, 1].cpu().numpy()
 
 # %%
 # 3d plot with topk_inputs as color and zs and ns on the axes
-for idx in topk_idxs[0]:
-  plt.scatter(zs, ns, c=diffs[idx], s=5)
-  plt.title(f"activation {idx}")
-  plt.colorbar()
-  plt.xlabel("Z")
-  plt.ylabel("N")
-  # plt.scatter(ns, topk_inputs[:,0], alpha=.3, s=5)
-  plt.show()
+with torch.no_grad():
+  for idx in topk_idxs[0]:
+    plt.scatter(zs, ns, c=diffs[idx.cpu().item()], s=5)
+    plt.title(f"activation {idx}")
+    plt.colorbar()
+    plt.xlabel("Z")
+    plt.ylabel("N")
+    # plt.scatter(ns, topk_inputs[:,0], alpha=.3, s=5)
+    plt.show()
 # %%
 len(nonzero_idxs)
 # %%
+with torch.no_grad():
+  for idx in topk_idxs[0]:
+    plt.scatter(zs, ns, c=_input[:, idx].cpu().numpy(),s=5)
+    plt.title(f"activation {idx}")
+    plt.colorbar()
+    plt.xlabel("Z")
+    plt.ylabel("N")
+    # plt.scatter(ns, topk_inputs[:,0], alpha=.3, s=5)
+    plt.show()
+
+# %%
+features = _input[:,nonzero_idxs].shape
+inputs = trainer.data.X[::8]

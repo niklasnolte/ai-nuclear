@@ -5,3 +5,5 @@ data/ground_states.csv
 wandb
 .vscode
 results
+**/*pt.*
+**/*pt

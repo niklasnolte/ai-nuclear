@@ -1,0 +1,37 @@
+MODEL: baseline
+WD: 0.01
+LR: 0.001
+EPOCHS: 50000
+N_FOLDS: 100
+WHICH_FOLDS:
+- 0
+HIDDEN_DIM: 1024
+DEPTH: 1
+SEED: 0
+BATCH_SIZE: 4096
+INCLUDE_NUCLEI_GT: 20
+TARGETS_CLASSIFICATION: {}
+TARGETS_REGRESSION:
+  binding_semf: 1.0
+  z: 1.0
+  n: 1.0
+  radius: 1.0
+  qa: 1.0
+  qbm: 1.0
+  qbm_n: 1.0
+  qec: 1.0
+SCHED: cosine
+LIPSCHITZ: 'false'
+TMS: remove
+DROPOUT: 0.0
+FINAL_LR: 1.0e-05
+WD_ON_EMBEDDINGS: 'false'
+DEV: cuda
+WANDB: 0
+ROOT: /checkpoint/nolte/nuclr_revisited
+LOG_FREQ: 50
+CKPT_FREQ: 5000
+exp_name: find_nuclr_spiral
+name: NUCLR/model_baseline/wd_0.01/lr_0.001/epochs_50000/nfolds_100/whichfolds_0/hiddendim_1024/depth_1/seed_0/batchsize_4096/includenucleigt_20/targetsclassification_None/targetsregression_binding_semf:1-z:1-n:1-radius:1-qa:1-qbm:1-qbm_n:1-qec:1/sched_cosine/lipschitz_false/tms_remove/dropout_0.0/finallr_1e-05/wdonembeddings_false
+basedir: ''
+CKPT: ''
